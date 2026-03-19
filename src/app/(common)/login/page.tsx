@@ -67,6 +67,7 @@ export default function LoginPage() {
           password,
           "g-recaptcha-response": 1,
           type: "login",
+           client_user_agent: navigator.userAgent,
         }),
       });
 

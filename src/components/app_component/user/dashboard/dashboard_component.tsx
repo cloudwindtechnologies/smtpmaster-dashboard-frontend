@@ -470,7 +470,7 @@ function MonthlyOverviewCard({
           <defs>
             <linearGradient id="gaugeRemainingGradientStable" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#3b82f6" />
-              <stop offset="100%" stopColor="#9333ea" />
+              <stop offset="100%" stopColor="#3b82f6" />
             </linearGradient>
           </defs>
 
@@ -531,10 +531,10 @@ function MonthlyOverviewCard({
           </text>
         </svg>
 
-        <div className="absolute left-[-20] top-[96px] flex items-center gap-2 text-[17px] font-semibold text-[#aa9a86]">
+        <div className="absolute left-[-10] top-[96px] flex items-center gap-2 text-[17px] font-semibold text-[#aa9a86]">
           <span>{formatNumber(leftValue)}</span>
           <span className="h-3 w-3 rounded-full bg-[#d8ccb8]" />
-          ll
+          
         </div>
       </div>
     );
@@ -564,7 +564,7 @@ function MonthlyOverviewCard({
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-3">
             <h2 className="text-[27px] font-bold leading-none text-[#111111]">
-              Monthly Overview:
+              Email Sending Overview:
             </h2>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f3e8ff] text-[#7e22ce]">
               <Mail className="h-5 w-5" />
@@ -588,8 +588,8 @@ function MonthlyOverviewCard({
         <div className="overflow-hidden">
           <div className="mb-1 flex items-start justify-between">
             <div>
-              <h3 className="text-[18px] font-semibold text-[#111111]">Daily Sending Trend</h3>
-              <p className="mt-1 text-[14px] text-[#666666]">Last 30 days</p>
+              <h3 className="text-[18px] font-semibold text-[#111111]">{formatNumber(sent)} mails used</h3>
+              
             </div>
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef6fb] text-[#9fc5dd]">
               <TrendingUp className="h-4 w-4" />

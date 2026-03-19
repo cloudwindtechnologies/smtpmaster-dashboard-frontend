@@ -69,7 +69,7 @@ const API = {
   LOGOUT_CURRENT: `${API_BASE}/api/v1/logout`,
 
   // ✅ NEW: logout all devices (you must create this route + controller)
-  LOGOUT_ALL_DEVICES: `${API_BASE}/api/v1/logoutAllDevices`,
+  LOGOUT_ALL_DEVICES: `${API_BASE}/api/v1/deleteOldLoginTokens`,
 }
 
 function cn(...classes: Array<string | false | null | undefined>) {
@@ -819,7 +819,7 @@ function ManageDevicesTab() {
       setLoggingOutCurrent(true)
 
       const res = await fetch(API.LOGOUT_CURRENT, {
-        method: "POST",
+        method: "GET",
         headers: authHeader(),
       })
 
@@ -884,7 +884,7 @@ function ManageDevicesTab() {
       setLoggingOutAll(true)
 
       const res = await fetch(API.LOGOUT_ALL_DEVICES, {
-        method: "POST",
+        method: "GET",
         headers: authHeader(),
       })
 
