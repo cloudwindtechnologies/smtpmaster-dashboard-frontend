@@ -355,7 +355,7 @@ export default function UsersListTable() {
       };
 
       const targetPath = routeMap[data.wheretogo || "/"] || "/";
-      const newTabUrl = `http://localhost:3000${targetPath}?session=${encodedData}`;
+      const newTabUrl = `${window.location.origin}${targetPath}?session=${encodedData}`;
       window.open(newTabUrl, "_blank");
     } catch (error: any) {
       setErrorMessage(error.message || "Superlogin failed");

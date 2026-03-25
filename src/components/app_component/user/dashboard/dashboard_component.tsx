@@ -282,7 +282,7 @@ function StatCard({
               )}
             </p>
 
-            {subtitle && <p className="mt-2 text-sm text-gray-500">{subtitle}</p>}
+            {subtitle &&  <p className="mt-2 text-sm text-gray-500 whitespace-nowrap">{subtitle}</p>}
           </div>
 
           {Icon && (
@@ -598,15 +598,17 @@ function MonthlyOverviewCard({
 
           <MiniLineChart data={dailyTrendData} stroke="#9fc5dd" fill="#9fc5dd" showDots />
         </div>
-
+        <Link href='/spam-report'>
         <div className="overflow-hidden">
           <div className="mb-1 flex items-start justify-between">
+            
             <div>
               <h3 className="text-[18px] font-semibold text-[#111111]">Account Health</h3>
               <p className="mt-2 text-[19px] font-bold leading-none text-black">
                 {accountHealthMeta.label}
               </p>
             </div>
+            
             <div
               className={`flex h-8 w-8 items-center justify-center rounded-full ${accountHealthMeta.iconBg} ${accountHealthMeta.iconText}`}
             >
@@ -620,16 +622,19 @@ function MonthlyOverviewCard({
             fill={accountHealthMeta.fill}
             showDots={false}
           />
-        </div>
+        </div></Link>
 
+        <Link href='/email-logs'>
         <div className="overflow-hidden">
           <div className="mb-1 flex items-start justify-between">
+            
             <div>
-              <h3 className="text-[18px] font-semibold text-[#111111]">Network Performance</h3>
+              <h3 className="text-[18px] font-semibold text-[#111111]">Performance</h3>
               <p className="mt-2 text-[19px] font-bold leading-none text-black">
                 {networkMeta.label}
               </p>
             </div>
+            
             <div
               className={`flex h-8 w-8 items-center justify-center rounded-full ${networkMeta.iconBg} ${networkMeta.iconText}`}
             >
@@ -643,7 +648,7 @@ function MonthlyOverviewCard({
             fill={networkMeta.fill}
             showDots={false}
           />
-        </div>
+        </div></Link>
       </div>
     </div>
   );
@@ -652,33 +657,23 @@ function MonthlyOverviewCard({
 /** =========================
  * Chart controls
  * ========================= */
-type PresetKey =
-  | "last_7"
-  | "last_30"
-  | "last_90"
-  | "last_month"
-  | "last_quarter"
-  | "last_6_months"
-  | "custom";
+type PresetKey = "weekly" | "monthly" | "quarterly" | "half_yearly";
 
 const PRESETS: { key: PresetKey; label: string }[] = [
-  { key: "last_7", label: "Last 7 days" },
-  { key: "last_30", label: "Last 30 days" },
-  { key: "last_90", label: "Last 90 days" },
-  { key: "last_month", label: "Last month" },
-  { key: "last_quarter", label: "Last quarter" },
-  { key: "last_6_months", label: "Last six months" },
-  { key: "custom", label: "Custom Date" },
+  { key: "weekly", label: "Weekly" },
+  { key: "monthly", label: "Monthly" },
+  { key: "quarterly", label: "Quarterly" },
+  { key: "half_yearly", label: "Half Yearly" },
 ];
 
 function getRangeFromPreset(preset: PresetKey, maxISO: string) {
   const end = maxISO;
-  if (preset === "last_7") return { start: addDaysISO(end, -6), end };
-  if (preset === "last_30") return { start: addDaysISO(end, -29), end };
-  if (preset === "last_90") return { start: addDaysISO(end, -89), end };
-  if (preset === "last_6_months") return { start: addDaysISO(end, -179), end };
-  if (preset === "last_quarter") return { start: addDaysISO(end, -89), end };
-  if (preset === "last_month") return { start: addDaysISO(end, -29), end };
+
+  if (preset === "weekly") return { start: addDaysISO(end, -6), end };
+  if (preset === "monthly") return { start: addDaysISO(end, -29), end };
+  if (preset === "quarterly") return { start: addDaysISO(end, -89), end };
+  if (preset === "half_yearly") return { start: addDaysISO(end, -179), end };
+
   return { start: addDaysISO(end, -29), end };
 }
 
@@ -692,8 +687,9 @@ export default function DashboardPage() {
   const [error, setError] = useState<string>("");
   const [dismissedDomains, setDismissedDomains] = useState<Set<string>>(new Set());
 
-  const [presetOpen, setPresetOpen] = useState(false);
-  const [preset, setPreset] = useState<PresetKey>("last_30");
+const [periodOpen, setPeriodOpen] = useState(false);
+const [customDateOpen, setCustomDateOpen] = useState(false);
+const [preset, setPreset] = useState<PresetKey>("monthly");
   const [draftStart, setDraftStart] = useState<string>("");
   const [draftEnd, setDraftEnd] = useState<string>("");
   const [chartStart, setChartStart] = useState<string>("");
@@ -856,7 +852,7 @@ export default function DashboardPage() {
 
     const filtered = rows.filter((r) => r.date >= appliedStart && r.date <= appliedEnd);
 
-    const headerLabel = PRESETS.find((x) => x.key === preset)?.label || "Last 30 days";
+    const headerLabel = PRESETS.find((x) => x.key === preset)?.label || "Monthly";
 
     return {
       minISO,
@@ -882,27 +878,26 @@ export default function DashboardPage() {
     setDismissedDomains((prev) => new Set([...prev, domain.toLowerCase()]));
   };
 
-  const applyPreset = (p: PresetKey) => {
-    setPreset(p);
+const applyPreset = (p: PresetKey) => {
+  setPreset(p);
 
-    if (p === "custom") return;
+  const r = getRangeFromPreset(p, chart.maxISO || toISO(new Date()));
+  setChartStart(r.start);
+  setChartEnd(r.end);
+  setDraftStart(r.start);
+  setDraftEnd(r.end);
+  setPeriodOpen(false);
+};
+const applyCustom = () => {
+  if (!draftStart || !draftEnd) return;
 
-    const r = getRangeFromPreset(p, chart.maxISO || toISO(new Date()));
-    setChartStart(r.start);
-    setChartEnd(r.end);
-    setDraftStart(r.start);
-    setDraftEnd(r.end);
-    setPresetOpen(false);
-  };
+  const start = draftStart <= draftEnd ? draftStart : draftEnd;
+  const end = draftStart <= draftEnd ? draftEnd : draftStart;
 
-  const applyCustom = () => {
-    if (!draftStart || !draftEnd) return;
-    const start = draftStart <= draftEnd ? draftStart : draftEnd;
-    const end = draftStart <= draftEnd ? draftEnd : draftStart;
-    setChartStart(start);
-    setChartEnd(end);
-    setPresetOpen(false);
-  };
+  setChartStart(start);
+  setChartEnd(end);
+  setCustomDateOpen(false);
+};
 
   const togglePill = (key: "delivered" | "bounce" | "hard" | "soft") => {
     if (key === "delivered") setShowDelivered((v) => !v);
@@ -1017,7 +1012,7 @@ export default function DashboardPage() {
           <StatCard
             title="Total Sent"
             value={loading ? "—" : formatNumber(derived.total)}
-            subtitle="Delivered + bounced"
+            subtitle="Delivered + Bounced"
             icon={Send}
             color="blue"
             loading={loading}
@@ -1052,119 +1047,132 @@ export default function DashboardPage() {
         </div>
 
         <div className="mb-8 rounded-2xl bg-white p-6 shadow-lg">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h3 className="text-xl font-semibold text-gray-900">Campaign performance</h3>
+              <h3 className="text-xl font-semibold text-gray-900">Email performance</h3>
               <p className="text-sm text-gray-600">For all campaigns • Updated a few seconds ago</p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-gray-50"
-                title="Download"
-              >
-                <Download className="h-5 w-5 text-gray-700" />
-              </button>
+           <div className="flex flex-wrap items-center gap-3">
+                {/* Custom date filter */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    title="Custom date filter"
+                    onClick={() => {
+                      setCustomDateOpen((v) => !v);
+                      setPeriodOpen(false);
+                    }}
+                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm transition hover:bg-gray-50"
+                  >
+                    <Filter className="h-5 w-5 text-gray-700" />
+                  </button>
 
-              <button
-                type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-gray-50"
-                title="Filter"
-                onClick={() => setPresetOpen((v) => !v)}
-              >
-                <Filter className="h-5 w-5 text-gray-700" />
-              </button>
+                  {customDateOpen && (
+                    <div className="absolute right-0 z-50 mt-2 w-[340px] rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
+                      <div className="mb-3">
+                        <h4 className="text-sm font-semibold text-gray-900">Custom date range</h4>
+                        <p className="mt-1 text-xs text-gray-500">Select start and end date</p>
+                      </div>
 
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setPresetOpen((v) => !v)}
-                  className="flex h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 hover:bg-gray-50"
-                >
-                  <span className="text-sm text-gray-800">{chart.headerLabel}</span>
-                  <ChevronDown className="h-4 w-4 text-gray-600" />
-                </button>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">Start date</label>
+                          <input
+                            type="date"
+                            value={draftStart}
+                            onChange={(e) => setDraftStart(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400"
+                            min={chart.minISO}
+                            max={chart.maxISO}
+                          />
+                        </div>
 
-                {presetOpen && (
-                  <div className="absolute right-0 z-50 mt-2 w-[360px] rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
-                    <div className="flex gap-3">
-                      <div className="max-h-[220px] w-[160px] overflow-auto pr-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">End date</label>
+                          <input
+                            type="date"
+                            value={draftEnd}
+                            onChange={(e) => setDraftEnd(e.target.value)}
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400"
+                            min={chart.minISO}
+                            max={chart.maxISO}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCustomDateOpen(false)}
+                          className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={applyCustom}
+                          className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:opacity-95"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Period selector */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPeriodOpen((v) => !v);
+                      setCustomDateOpen(false);
+                    }}
+                    className="flex min-h-[44px] min-w-[180px] items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 shadow-sm transition hover:bg-gray-50"
+                  >
+                    <span className="truncate text-sm font-medium text-gray-800">{chart.headerLabel}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-gray-600" />
+                  </button>
+
+                  {periodOpen && (
+                    <div className="absolute right-0 z-50 mt-2 w-[220px] rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
+                      <div className="grid gap-2">
                         {PRESETS.map((p) => (
                           <button
                             key={p.key}
                             type="button"
                             onClick={() => applyPreset(p.key)}
                             className={[
-                              "w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-gray-50",
-                              preset === p.key ? "bg-gray-50 font-semibold" : "",
+                              "flex min-h-[44px] w-full items-center rounded-xl px-4 text-left text-sm font-medium transition",
+                              preset === p.key
+                                ? "bg-violet-50 text-violet-700"
+                                : "text-gray-700 hover:bg-gray-50",
                             ].join(" ")}
                           >
                             {p.label}
                           </button>
                         ))}
                       </div>
-
-                      <div className="flex-1">
-                        <div className="mb-2 text-xs text-gray-500">Date range</div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="date"
-                            value={draftStart}
-                            onChange={(e) => setDraftStart(e.target.value)}
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                            min={chart.minISO}
-                            max={chart.maxISO}
-                          />
-                          <span className="text-gray-400">→</span>
-                          <input
-                            type="date"
-                            value={draftEnd}
-                            onChange={(e) => setDraftEnd(e.target.value)}
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                            min={chart.minISO}
-                            max={chart.maxISO}
-                          />
-                        </div>
-
-                        <div className="mt-3 flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setPresetOpen(false)}
-                            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm hover:bg-gray-50"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={applyCustom}
-                            className="rounded-lg bg-violet-600 px-4 py-2 text-sm text-white hover:opacity-95"
-                          >
-                            Apply
-                          </button>
-                        </div>
-
-                        <div className="mt-3 text-[11px] text-gray-500">
-                          * This filter updates only the chart (cards stay the same).
-                        </div>
-                      </div>
                     </div>
-                  </div>
+                  )}
+                </div>
+
+                {(periodOpen || customDateOpen) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPeriodOpen(false);
+                      setCustomDateOpen(false);
+                    }}
+                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm transition hover:bg-gray-50"
+                    title="Close"
+                  >
+                    <X className="h-5 w-5 text-gray-700" />
+                  </button>
                 )}
               </div>
-
-              {presetOpen && (
-                <button
-                  type="button"
-                  onClick={() => setPresetOpen(false)}
-                  className="ml-1 flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-gray-50"
-                  title="Close"
-                >
-                  <X className="h-5 w-5 text-gray-700" />
-                </button>
-              )}
-            </div>
-          </div>
+           </div>
 
           <div className="h-[360px]">
             {loading ? (

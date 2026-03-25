@@ -51,7 +51,7 @@ export default function EmailSystemConfig() {
   const router = useRouter();
 
   // ✅ PUT YOUR REAL ENDPOINT HERE
-  const CONFIG_URL = "http://localhost:8000/api/v1/user/useEmailConfig";
+  const CONFIG_URL = "api/email-config/useEmailConfig";
 
   // Tabs
   const [mainTab, setMainTab] = useState<MainTab>("smtp");

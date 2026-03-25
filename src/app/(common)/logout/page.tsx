@@ -60,9 +60,21 @@ export default function LogoutPage() {
           },
         }).catch(() => {});
 
-        // Clear cookies
-        document.cookie = "token=; Path=/; Max-Age=0; SameSite=Lax";
-        document.cookie = "role=; Path=/; Max-Age=0; SameSite=Lax";
+        // // Clear cookies
+        // document.cookie = "token=; Path=/; Max-Age=0; SameSite=Lax";
+        // document.cookie = "role=; Path=/; Max-Age=0; SameSite=Lax";
+        // Delete with same path and domain
+      const domain = window.location.hostname;
+     document.cookie.split(";").forEach((cookie) => {
+      const name = cookie.split("=")[0].trim();
+
+      document.cookie = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      document.cookie = `${name}=; Path=/; Max-Age=0`;
+
+      // for localhost domain
+      document.cookie = `${name}=; Path=/; Domain=${domain}; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    });
+
 
         // Clear ALL client storage
         localStorage.removeItem("token");

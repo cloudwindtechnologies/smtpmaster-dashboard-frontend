@@ -47,10 +47,12 @@ function getDownloadHeaders() {
 }
 
 function badge(bounceColumn: string) {
-  if (bounceColumn === "Soft Bounce" || bounceColumn === "Hard Bounce") {
-    return { label: "Bounced", cls: "bg-red-500 text-white" };
+  if (bounceColumn === "Soft Bounce" ) {
+    return { label: "Soft Bounce", cls: "bg-yellow-500 text-black " };
+  }else if(bounceColumn === "Hard Bounce"){
+    return { label: "Hard Bounce", cls: "bg-red-500 text-white " }
   }
-  return { label: "Delivered", cls: "bg-green-600 text-white" };
+  return { label: "Delivered", cls: "bg-green-600 text-white " };
 }
 
 function toInt(val: any, fallback: number) {

@@ -16,8 +16,6 @@ export default function ForgotPasswordPage() {
   const [msg, setMsg] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const API_BASE = "http://localhost:8000/api/v1/user";
-
   async function sendOTP() {
     setLoading(true);
     setMsg("");
@@ -30,7 +28,7 @@ export default function ForgotPasswordPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/forgotPasswordSendOtp`, {
+      const res = await fetch(`api/auth/forgot-password/forgotPasswordSendOtp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -71,7 +69,7 @@ export default function ForgotPasswordPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/forgotPasswordVerifyOtp`, {
+      const res = await fetch(`api/auth/forgot-password/forgotPasswordVerifyOtp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -125,7 +123,7 @@ export default function ForgotPasswordPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/forgotPasswordReset`, {
+      const res = await fetch(`api/auth/forgot-password/forgotPasswordReset`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -151,14 +151,8 @@ export default function Header() {
   const handleLogout = () => {
     clearImpersonationEverywhere();
 
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    localStorage.removeItem("user");
-    localStorage.removeItem("superadmin_token");
-    localStorage.removeItem("admin_token_backup");
-
     toast.success("Logged out successfully");
-    router.push("/login");
+    router.push("/logout");
   };
 
   // Loading State
@@ -201,10 +195,10 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
-          <button className="relative p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+          <Link href='/notifications' className="relative p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
             <Bell className="h-5 w-5" />
             <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-card" />
-          </button>
+          </Link>
 
           <span className="hidden sm:block text-sm font-medium text-foreground">
             Hi, {username || "Guest"}

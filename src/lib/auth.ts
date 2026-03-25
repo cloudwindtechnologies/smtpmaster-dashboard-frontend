@@ -9,6 +9,7 @@ export const AUTH_KEYS = {
 export const getTabSession = (): 'superadmin' | 'user' => {
   if (typeof window === 'undefined') return 'superadmin';
   
+  
   // First check if explicitly set
   const explicit = sessionStorage.getItem('tab_session') as 'superadmin' | 'user';
   if (explicit) {

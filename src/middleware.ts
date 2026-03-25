@@ -73,7 +73,7 @@ export function middleware(req: NextRequest) {
   // ✅ Read cookies
   const token = req.cookies.get("token")?.value;
   const role = req.cookies.get("role")?.value as Role | undefined;
-
+ 
   // ❌ Missing or expired token
   if (!token || !role || isTokenExpired(token)) {
     const url = req.nextUrl.clone();
