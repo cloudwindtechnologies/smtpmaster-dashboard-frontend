@@ -416,27 +416,27 @@ export default function AllPakagesComponent() {
                     </td>
 
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900 group-hover:text-orange-700 transition-colors">
+                      <div className="font-semibold text-lg text-gray-900 group-hover:text-orange-700 transition-colors">
                         {r.name}
                       </div>
                     </td>
 
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-lg font-medium bg-blue-50 text-blue-700">
                         {r.emailLimit === 0 ? "Unlimited" : r.emailLimit.toLocaleString()}
                       </span>
                     </td>
 
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-gray-900">
                       <div className="flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-gray-400" />
+                        <Clock className="h-3.5 w-3.5 text-gray-900" />
                         {r.validity}
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-gray-900">
                       <div className="flex items-center gap-1.5">
-                        <Zap className="h-3.5 w-3.5 text-gray-400" />
+                        <Zap className="h-3.5 w-3.5 text-gray-900" />
                         {r.speed}
                       </div>
                     </td>
@@ -444,9 +444,9 @@ export default function AllPakagesComponent() {
                     {/* ✅ Price with conversion */}
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
-                        <span className="text-lg font-bold text-gray-900">
+                        <span className="text-lg text-gray-900">
                           {p.symbol}
-                          {p.amount.toFixed(2)}
+                          {p.amount.toFixed(0)}
                         </span>
                       </div>
                     </td>

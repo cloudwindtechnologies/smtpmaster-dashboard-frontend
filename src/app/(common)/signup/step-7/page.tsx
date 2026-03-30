@@ -1,337 +1,473 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Phone, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { auth } from "@/lib/firebase";
 import {
   ConfirmationResult,
+  RecaptchaVerifier,
   signInWithPhoneNumber,
-  connectAuthEmulator,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { token } from "@/components/app_component/common/http";
 
-function digitsOnly(v: string) {
-  return v.replace(/\D/g, "");
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, "");
 }
 
-declare global {
-  interface Window {
-    __authEmulatorConnected?: boolean;
-  }
-}
+type CountryItem = {
+  id?: number | string;
+  name?: string;
+  country_name?: string;
+  code?: string;
+  iso_code?: string;
+  dial_code?: string;
+  phonecode?: string | number;
+};
 
-export default function PhoneOtpVerifyPage() {
-  const router = useRouter();
-
+export default function PhoneVerifyPage() {
   const [countryCode, setCountryCode] = useState("+91");
+  const [countries, setCountries] = useState<CountryItem[]>([]);
   const [mobile, setMobile] = useState("");
   const [otp, setOtp] = useState("");
-
-  const [sending, setSending] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [fetchingCode, setFetchingCode] = useState(false);
-
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
-
+  const [loading, setLoading] = useState(false);
+  const [countryLoading, setCountryLoading] = useState(true);
   const [confirmationResult, setConfirmationResult] =
     useState<ConfirmationResult | null>(null);
+  const [message, setMessage] = useState("");
+  const [step, setStep] = useState<"phone" | "otp">("phone");
 
-  const isDev = process.env.NODE_ENV === "development";
-
-  const fullNumber = useMemo(() => {
-    const cc = countryCode.startsWith("+") ? countryCode : `+${countryCode}`;
-    const num = digitsOnly(mobile);
-    return num ? `${cc}${num}` : "";
-  }, [countryCode, mobile]);
-
-  const canSendOtp = useMemo(() => {
-    return digitsOnly(mobile).length >= 8 && fullNumber.length > 0;
-  }, [mobile, fullNumber]);
-
-  const canVerify = useMemo(() => {
-    return !!confirmationResult && digitsOnly(otp).length >= 4;
-  }, [confirmationResult, otp]);
+  const fullNumber = `${countryCode}${digitsOnly(mobile)}`;
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const fetchCountries = async () => {
+      try {
+        setCountryLoading(true);
 
-    if (isDev && !window.__authEmulatorConnected) {
-      connectAuthEmulator(auth, "http://127.0.0.1:9099", {
-        disableWarnings: true,
-      });
-      window.__authEmulatorConnected = true;
-    }
-  }, [isDev]);
+        const response = await fetch("/api/auth/register/countries", {
+          method: "GET",
+          cache: "no-store",
+        });
 
-  const handleSendOtp = async () => {
-    setMessage(null);
+        const data = await response.json();
+       
+        
+        const countryList = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.countries)
+          ? data.countries
+          : Array.isArray(data)
+          ? data
+          : [];
+           console.log(countryList);
+        setCountries(countryList);
 
-    if (!canSendOtp) {
-      setMessage({ type: "error", text: "Enter a valid phone number" });
-      return;
-    }
+        if (countryList.length > 0) {
+          const india =
+            countryList.find(
+              (item: CountryItem) =>
+                item.code === "IN" ||
+                item.iso_code === "IN" ||
+                item.name?.toLowerCase() === "india" ||
+                item.country_name?.toLowerCase() === "india"
+            ) || countryList[0];
 
-    setSending(true);
-
-    try {
-      if (!isDev) {
-        throw new Error(
-          "This page is currently set up for development with Firebase Auth Emulator only."
-        );
+          const dialCode = getDialCode(india);
+          if (dialCode) {
+            setCountryCode(dialCode);
+          }
+        }
+      } catch (error) {
+        console.error("Country fetch error:", error);
+        setMessage("❌ Failed to load countries");
+      } finally {
+        setCountryLoading(false);
       }
+    };
 
-      const result = await signInWithPhoneNumber(auth, fullNumber);
-      setConfirmationResult(result);
+    fetchCountries();
+  }, []);
 
-      setMessage({
-        type: "success",
-        text: "OTP generated in Firebase Auth Emulator.",
-      });
-    } catch (e: any) {
-      console.error("Firebase send OTP error:", e);
-      setMessage({
-        type: "error",
-        text: e?.message || "Failed to send OTP",
-      });
-    } finally {
-      setSending(false);
+  function getDialCode(item: CountryItem) {
+    if (item.code) {
+      return String(item.code).startsWith("+")
+        ? String(item.code)
+        : `+${item.code}`;
     }
-  };
 
-  const handleFetchEmulatorCode = async () => {
-    if (!isDev || !fullNumber) return;
-
-    setFetchingCode(true);
-    setMessage(null);
-
-    try {
-      const res = await fetch(
-        "http://127.0.0.1:9099/emulator/v1/projects/demo-project/verificationCodes"
-      );
-      const data = await res.json();
-
-      const match = Array.isArray(data?.verificationCodes)
-        ? data.verificationCodes.find(
-            (item: any) => item.phoneNumber === fullNumber
-          )
-        : null;
-
-      if (!match?.code) {
-        throw new Error("No emulator OTP found for this number.");
-      }
-
-      setOtp(match.code);
-      setMessage({
-        type: "success",
-        text: `Fetched emulator OTP: ${match.code}`,
-      });
-    } catch (e: any) {
-      console.error("Fetch emulator code error:", e);
-      setMessage({
-        type: "error",
-        text: e?.message || "Failed to fetch emulator OTP.",
-      });
-    } finally {
-      setFetchingCode(false);
+    if (item.phonecode !== undefined && item.phonecode !== null) {
+      const phonecode = String(item.phonecode);
+      return phonecode.startsWith("+") ? phonecode : `+${phonecode}`;
     }
-  };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage(null);
+    return "";
+  }
 
-    if (!confirmationResult) {
-      setMessage({ type: "error", text: "Please send OTP first." });
+  function getCountryLabel(item: CountryItem) {
+    return (
+      item.country_name ||
+      item.name ||
+      item.code ||
+      item.iso_code ||
+      "Country"
+    );
+  }
+
+  const handleSendOTP = async () => {
+    setMessage("");
+
+    if (!digitsOnly(mobile) || digitsOnly(mobile).length < 6) {
+      setMessage("Please enter a valid phone number");
       return;
     }
 
-    if (!canVerify) {
-      setMessage({ type: "error", text: "Enter a valid OTP." });
-      return;
-    }
-
-    setVerifying(true);
-
     try {
-      await confirmationResult.confirm(digitsOnly(otp));
+      setLoading(true);
 
-      const res = await fetch(
-        "http://localhost:8000/api/v1/user/verifyMobileWithFirebase",
+      const recaptchaVerifier = new RecaptchaVerifier(
+        auth,
+        "recaptcha-container",
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Authorization: `Bearer ${token()}`,
-          },
-          body: JSON.stringify({
-            country_code: countryCode,
-            mobile: digitsOnly(mobile),
-            full_number: fullNumber,
-            firebase_verified: true,
-          }),
+          size: "invisible",
         }
       );
 
-      const data = await res.json().catch(() => ({}));
+      const result = await signInWithPhoneNumber(
+        auth,
+        fullNumber,
+        recaptchaVerifier
+      );
 
-      if (!res.ok) {
-        throw new Error(data?.message || "Failed to save verification status");
-      }
-
-      setMessage({
-        type: "success",
-        text: data?.message || "Phone verified successfully!",
-      });
-
-      router.replace("/login");
-    } catch (e: any) {
-      console.error("Firebase verify OTP error:", e);
-      setMessage({
-        type: "error",
-        text: e?.message || "OTP verification failed",
-      });
+      setConfirmationResult(result);
+      setStep("otp");
+      setMessage("✅ OTP sent successfully");
+    } catch (error: any) {
+      console.error("Send OTP error:", error);
+      setMessage(`❌ ${error.message || "Failed to send OTP"}`);
     } finally {
-      setVerifying(false);
+      setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-8">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50">
-            <Phone className="h-6 w-6 text-blue-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Verify your phone</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Development mode: Firebase Auth Emulator
-          </p>
-        </div>
+  const handleVerifyOTP = async () => {
+    setMessage("");
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Code
-              </label>
-              <input
+    if (!confirmationResult) {
+      setMessage("Please request OTP first");
+      return;
+    }
+
+    if (!otp) {
+      setMessage("Please enter OTP");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const result = await confirmationResult.confirm(otp);
+      const firebaseToken = await result.user.getIdToken();
+
+      const appAuthToken = localStorage.getItem("token");
+
+      const response = await fetch("/api/auth/register/verify-phone", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${appAuthToken || ""}`,
+        },
+        body: JSON.stringify({
+          country_code: countryCode,
+          mobile: digitsOnly(mobile),
+          full_number: fullNumber,
+          firebase_token: firebaseToken,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Verification failed");
+      }
+
+      setMessage("✅ Phone verified successfully!");
+
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+      }
+
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 2000);
+    } catch (error: any) {
+      console.error("Verify error:", error);
+      setMessage(`❌ ${error.message || "Invalid OTP"}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const useTestNumber = (code: string, number: string) => {
+    setCountryCode(code);
+    setMobile(number);
+    setMessage("✅ Test number selected");
+  };
+
+  return (
+    <div
+      style={{
+        maxWidth: 450,
+        margin: "40px auto",
+        padding: 30,
+        fontFamily: "Arial, sans-serif",
+        backgroundColor: "white",
+        borderRadius: 12,
+        boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+      }}
+    >
+      <div style={{ textAlign: "center", marginBottom: 30 }}>
+        <h1 style={{ fontSize: 24, color: "#333", marginBottom: 8 }}>
+          Phone Verification
+        </h1>
+        <p style={{ color: "#666", fontSize: 14 }}>
+          {step === "phone"
+            ? "Enter your phone number"
+            : "Enter verification code"}
+        </p>
+      </div>
+
+      {step === "phone" ? (
+        <>
+          <div style={{ marginBottom: 20 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 8,
+                fontWeight: "bold",
+                fontSize: 14,
+              }}
+            >
+              Phone Number
+            </label>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <select
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+91"
-                disabled={sending || verifying}
-              />
-            </div>
+                style={{
+                  width: "130px",
+                  padding: "12px",
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  fontSize: 16,
+                }}
+                disabled={loading || countryLoading}
+              >
+                {countries.length > 0 ? (
+                  countries.map((item, index) => {
+                    const dialCode = getDialCode(item);
+                    if (!dialCode) return null;
 
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone number
-              </label>
+                    return (
+                      <option key={item.id ?? index} value={dialCode}>
+                        {dialCode} ({getCountryLabel(item)})
+                      </option>
+                    );
+                  })
+                ) : (
+                  <option value="+91">+91 (India)</option>
+                )}
+              </select>
+
               <input
+                type="tel"
+                placeholder="Enter mobile number"
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="9876543210"
-                inputMode="numeric"
-                disabled={sending || verifying}
+                onChange={(e) => setMobile(e.target.value.replace(/\D/g, ""))}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  fontSize: 16,
+                }}
+                disabled={loading}
+                maxLength={15}
               />
             </div>
           </div>
 
-          {fullNumber ? (
-            <div className="text-xs text-gray-600">
-              Sending to:{" "}
-              <span className="font-semibold text-gray-900">{fullNumber}</span>
+          <div style={{ marginBottom: 24 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 8,
+                fontWeight: "bold",
+                fontSize: 14,
+              }}
+            >
+              Quick Test Numbers
+            </label>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => useTestNumber("+1", "6505553434")}
+                type="button"
+                style={{
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  backgroundColor: "#e9ecef",
+                  border: "1px solid #dee2e6",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                }}
+              >
+                US: +1 6505553434
+              </button>
+
+              <button
+                onClick={() => useTestNumber("+44", "1234567890")}
+                type="button"
+                style={{
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  backgroundColor: "#e9ecef",
+                  border: "1px solid #dee2e6",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                }}
+              >
+                UK: +44 1234567890
+              </button>
+
+              <button
+                onClick={() => useTestNumber("+91", "9876543210")}
+                type="button"
+                style={{
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  backgroundColor: "#e9ecef",
+                  border: "1px solid #dee2e6",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                }}
+              >
+                India: +91 9876543210
+              </button>
             </div>
-          ) : null}
+          </div>
 
           <button
-            type="button"
-            onClick={handleSendOtp}
-            disabled={sending || verifying || !canSendOtp}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition disabled:opacity-60"
+            onClick={handleSendOTP}
+            disabled={loading || countryLoading || !digitsOnly(mobile)}
+            style={{
+              width: "100%",
+              padding: "14px",
+              backgroundColor: loading ? "#ccc" : "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 16,
+              cursor: loading ? "not-allowed" : "pointer",
+              fontWeight: "bold",
+            }}
           >
-            {sending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {sending ? "Sending OTP..." : "Send OTP"}
+            {loading ? "Sending..." : "Send Verification Code"}
           </button>
 
-          {confirmationResult && (
-            <button
-              type="button"
-              onClick={handleFetchEmulatorCode}
-              disabled={fetchingCode}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition disabled:opacity-60"
+          <div id="recaptcha-container"></div>
+        </>
+      ) : (
+        <>
+          <div style={{ marginBottom: 24 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 8,
+                fontWeight: "bold",
+                fontSize: 14,
+              }}
             >
-              {fetchingCode && <Loader2 className="h-4 w-4 animate-spin" />}
-              {fetchingCode ? "Fetching OTP..." : "Fetch Emulator OTP"}
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={handleVerifyOtp} className="mt-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              OTP
+              Verification Code
             </label>
+
             <input
+              type="text"
+              placeholder="Enter 6-digit code"
               value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter OTP"
-              inputMode="numeric"
-              maxLength={8}
-              disabled={sending || verifying}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+              style={{
+                width: "100%",
+                padding: "14px",
+                border: "1px solid #ddd",
+                borderRadius: 6,
+                fontSize: 18,
+                textAlign: "center",
+                letterSpacing: 4,
+              }}
+              disabled={loading}
+              maxLength={6}
+              autoFocus
             />
           </div>
 
-          {message && (
-            <div
-              className={[
-                "rounded-lg px-3 py-2 text-sm",
-                message.type === "success"
-                  ? "bg-green-50 text-green-700"
-                  : "bg-red-50 text-red-600",
-              ].join(" ")}
-            >
-              {message.text}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-3">
+          <div style={{ display: "flex", gap: 10 }}>
             <button
-              type="button"
               onClick={() => {
+                setStep("phone");
                 setOtp("");
-                setConfirmationResult(null);
-                setMessage(null);
+                setMessage("");
               }}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-              disabled={sending || verifying}
+              disabled={loading}
+              style={{
+                flex: 1,
+                padding: "12px",
+                backgroundColor: "#6c757d",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                fontSize: 14,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
             >
-              <RotateCcw className="h-4 w-4" />
-              Reset
+              Back
             </button>
 
             <button
-              type="submit"
-              disabled={sending || verifying || !canVerify}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition disabled:opacity-60"
+              onClick={handleVerifyOTP}
+              disabled={loading || !otp}
+              style={{
+                flex: 2,
+                padding: "12px",
+                backgroundColor: loading ? "#ccc" : "#28a745",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                fontSize: 14,
+                cursor: loading ? "not-allowed" : "pointer",
+                fontWeight: "bold",
+              }}
             >
-              {verifying ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ShieldCheck className="h-4 w-4" />
-              )}
-              {verifying ? "Verifying..." : "Verify & Continue"}
+              {loading ? "Verifying..." : "Verify & Continue"}
             </button>
           </div>
-        </form>
-      </div>
+        </>
+      )}
+
+      {message && (
+        <div
+          style={{
+            marginTop: 20,
+            padding: 12,
+            backgroundColor: message.includes("✅") ? "#d4edda" : "#f8d7da",
+            color: message.includes("✅") ? "#155724" : "#721c24",
+            borderRadius: 6,
+            border: `1px solid ${
+              message.includes("✅") ? "#c3e6cb" : "#f5c6cb"
+            }`,
+          }}
+        >
+          {message}
+        </div>
+      )}
     </div>
   );
 }

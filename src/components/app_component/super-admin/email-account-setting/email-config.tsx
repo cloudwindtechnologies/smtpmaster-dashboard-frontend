@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Search, Pencil, Loader2 } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Search, Pencil, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 type EmailSendType = "smtp" | "app";
 
@@ -14,6 +14,13 @@ type ClientOption = {
 
 type TableApiRow = {
   user_id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+};
+
+type UserApiRow = {
+  id: number;
   first_name: string | null;
   last_name: string | null;
   email: string;
@@ -161,6 +168,16 @@ export default function EmailConfigurationPage() {
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState<string | null>(null);
 
+  // ✅ fixed Select Client states
+  const [clientOpen, setClientOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+  const [debouncedClientQ, setDebouncedClientQ] = useState("");
+  const [clientPage, setClientPage] = useState(1);
+  const [clientPerPage] = useState(10);
+  const [clientLastPage, setClientLastPage] = useState(1);
+  const [selectedClientOption, setSelectedClientOption] = useState<ClientOption | null>(null);
+  const clientDropdownRef = useRef<HTMLDivElement | null>(null);
+
   const [tableRows, setTableRows] = useState<TableRow[]>([]);
   const [tableLoading, setTableLoading] = useState(false);
   const [tableError, setTableError] = useState<string | null>(null);
@@ -176,7 +193,7 @@ export default function EmailConfigurationPage() {
     clientId: "",
     username: "",
     password: "",
-    email_send_type: "" as "" | EmailSendType, // backend values only: smtp/app
+    email_send_type: "" as "" | EmailSendType,
     host: "",
     port: "",
     app_url: "",
@@ -198,6 +215,11 @@ export default function EmailConfigurationPage() {
     setIsEditMode(false);
     setEditingUserId("");
     setEditingEmail("");
+    setSelectedClientOption(null);
+    setClientSearch("");
+    setDebouncedClientQ("");
+    setClientPage(1);
+    setClientOpen(false);
     setForm({
       clientId: "",
       username: "",
@@ -232,7 +254,7 @@ export default function EmailConfigurationPage() {
   }
 
   function pickUsername(u: any) {
-    return (u?.first_name+u?.last_name ||u?.email || u?.mobile || "").toString();
+    return `${u?.first_name ?? ""}${u?.last_name ?? ""}`.trim() || u?.email || u?.mobile || "";
   }
 
   function showApiError(json: any, fallback: string) {
@@ -246,29 +268,52 @@ export default function EmailConfigurationPage() {
     alert(json?.message || fallback);
   }
 
+  // ✅ fixed client fetch with same concept as your users page
   async function fetchClients() {
     setClientsLoading(true);
     setClientsError(null);
+
     try {
-      const res = await fetch("/api/email-account-setting/email-configuration/get-searchAll-user", {
-        method: "POST",
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      const list: any[] = json?.data ?? [];
-      
-      
-      const opts: ClientOption[] = (Array.isArray(list) ? list : []).map((u: any) => ({
+      const qs = new URLSearchParams();
+      if (debouncedClientQ.trim()) qs.set("q", debouncedClientQ.trim());
+      qs.set("page", String(clientPage));
+      qs.set("per_page", String(clientPerPage));
+
+      const res = await fetch(
+        `/api/email-account-setting/email-configuration/getUser?${qs.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.message || "Failed to load clients");
+      }
+
+      const users: UserApiRow[] = json?.data?.data?.data ?? [];
+      const meta = json?.data?.data ?? {};
+
+      const opts: ClientOption[] = (Array.isArray(users) ? users : []).map((u: any) => ({
         id: String(u?.id),
         label: makeClientLabel(u),
         username: pickUsername(u),
         email: u?.email ?? undefined,
       }));
+
       setClientOptions(opts);
-    } catch (e) {
+      setClientLastPage(Number(meta?.last_page ?? 1));
+    } catch (e: any) {
       console.error(e);
       setClientOptions([]);
-      setClientsError("Failed to load clients");
+      setClientLastPage(1);
+      setClientsError(e?.message || "Failed to load clients");
     } finally {
       setClientsLoading(false);
     }
@@ -277,16 +322,14 @@ export default function EmailConfigurationPage() {
   async function fetchTable() {
     setTableLoading(true);
     setTableError(null);
-    try { 
+    try {
       const res = await fetch(`/api/email-account-setting/email-configuration/get-email-config`, {
         method: "GET",
         headers: { authorization: `Bearer ${token}` },
       });
       const json = await res.json();
-      // your backend: json.email_config is array
       const users: TableApiRow[] = json?.email_config ?? [];
 
-      
       const mapped: TableRow[] = (Array.isArray(users) ? users : []).map((u) => {
         const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
         return {
@@ -307,16 +350,45 @@ export default function EmailConfigurationPage() {
   }
 
   useEffect(() => {
-    fetchClients();
     fetchTable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!isEditMode) {
+      fetchClients();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientPage, clientPerPage, debouncedClientQ, isEditMode]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedClientQ(clientSearch.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [clientSearch]);
+
+  useEffect(() => {
+    setClientPage(1);
+  }, [debouncedClientQ]);
+
+  useEffect(() => {
+    function handleOutsideClick(e: MouseEvent) {
+      if (!clientDropdownRef.current) return;
+      if (!clientDropdownRef.current.contains(e.target as Node)) {
+        setClientOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
   // ✅ auto fill username when selecting client (create mode only)
-  const selectedClient = useMemo(
-    () => clientOptions.find((c) => c.id === form.clientId),
-    [clientOptions, form.clientId]
-  );
+  const selectedClient = useMemo(() => {
+    if (selectedClientOption && selectedClientOption.id === form.clientId) return selectedClientOption;
+    return clientOptions.find((c) => c.id === form.clientId) || null;
+  }, [clientOptions, form.clientId, selectedClientOption]);
 
   useEffect(() => {
     if (!isEditMode && selectedClient?.username) {
@@ -324,7 +396,7 @@ export default function EmailConfigurationPage() {
     }
   }, [selectedClient, isEditMode]);
 
-  // ✅ when type changes, clear irrelevant fields (so UI behaves correctly)
+  // ✅ when type changes, clear irrelevant fields
   useEffect(() => {
     if (form.email_send_type === "smtp") {
       setForm((p) => ({ ...p, app_url: "" }));
@@ -382,7 +454,6 @@ export default function EmailConfigurationPage() {
       app_url: true,
     });
 
-    // validate
     if (!isEditMode && !form.clientId) return;
     if (!form.username.trim()) return;
     if (!form.password.trim()) return;
@@ -401,7 +472,6 @@ export default function EmailConfigurationPage() {
       if (!form.app_url.trim()) return;
     }
 
-    // ✅ Perfect payload for your Laravel rules
     const payload: any = {
       username: form.username.trim(),
       password: form.password.trim(),
@@ -410,7 +480,7 @@ export default function EmailConfigurationPage() {
 
     if (form.email_send_type === "smtp") {
       payload.host = form.host.trim();
-      payload.port = Number(form.port); // numeric
+      payload.port = Number(form.port);
     } else {
       payload.app_url = form.app_url.trim();
     }
@@ -424,7 +494,7 @@ export default function EmailConfigurationPage() {
             Accept: "application/json",
             "Content-Type": "application/json",
             authorization: `Bearer ${token}`,
-            'client-id':`${form.clientId}`
+            "client-id": `${form.clientId}`,
           },
           body: JSON.stringify(payload),
         });
@@ -438,7 +508,7 @@ export default function EmailConfigurationPage() {
             Accept: "application/json",
             "Content-Type": "application/json",
             authorization: `Bearer ${token}`,
-            "userId":editingUserId
+            userId: editingUserId,
           },
           body: JSON.stringify(payload),
         });
@@ -458,8 +528,9 @@ export default function EmailConfigurationPage() {
     setIsEditMode(true);
     setEditingUserId(row.id);
     setEditingEmail(row.email);
+    setSelectedClientOption(null);
+    setClientOpen(false);
 
-    // clear create selection + clear fields first
     setForm({
       clientId: "",
       username: row.email || "",
@@ -474,31 +545,25 @@ export default function EmailConfigurationPage() {
       const res = await fetch(`/api/email-account-setting/email-configuration/get-config-details`, {
         method: "GET",
         headers: {
-           Accept: "application/json",
-           authorization: `Bearer ${token}`,
-          'user-Id':row.id
+          Accept: "application/json",
+          authorization: `Bearer ${token}`,
+          "user-Id": row.id,
         },
-           
       });
 
       const json = await res.json();
       if (!res.ok) return showApiError(json, "Failed to load configuration details");
 
-      // ✅ supports:
-      // 1) json is object directly
-      // 2) json.email_config is object
-      // 3) json.email_config is array (take first)
       let data: any = json;
       if (json?.email_config) data = json.email_config;
       if (Array.isArray(data)) data = data[0];
 
       const d = data as ConfigDetails;
 
-      // ✅ IMPORTANT: email_send_type must be 'smtp' or 'app'
       setForm((p) => ({
         ...p,
         username: (d?.username ?? row.email ?? "").toString(),
-        password: (d?.without_hash ?? "").toString(), // backend sends plain password here
+        password: (d?.without_hash ?? "").toString(),
         email_send_type: d?.email_send_type || "",
         host: d?.email_send_type === "smtp" ? (d?.host ?? "").toString() : "",
         port: d?.email_send_type === "smtp" ? (d?.port ?? "").toString() : "",
@@ -519,14 +584,6 @@ export default function EmailConfigurationPage() {
       alert("Failed to load configuration details");
     }
   }
-
-  /* =======================
-     Security / Vulnerability notes (important)
-     - You are storing token in localStorage -> XSS risk.
-     - Backend returning "without_hash" password -> VERY risky. Avoid returning plain password.
-     - Showing hashed password in response is also unnecessary.
-     - Prefer: store password encrypted server-side and never return it back.
-  ======================= */
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
@@ -560,13 +617,102 @@ export default function EmailConfigurationPage() {
                   <Label>
                     Select Client <RequiredStar />
                   </Label>
-                  <Select
-                    value={form.clientId}
-                    onChange={(v) => setForm((p) => ({ ...p, clientId: v }))}
-                    placeholder={clientsLoading ? "Loading clients..." : "Select Username (Email/Mobile)"}
-                    disabled={clientsLoading}
-                    options={clientOptions.map((c) => ({ value: c.id, label: c.label }))}
-                  />
+
+                  <div className="relative mt-2" ref={clientDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setClientOpen((p) => !p)}
+                      disabled={clientsLoading}
+                      className={
+                        "flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm " +
+                        "focus:border-orange-400 focus:ring-2 focus:ring-orange-200 outline-none " +
+                        (clientsLoading ? "opacity-60 cursor-not-allowed" : "")
+                      }
+                    >
+                      <span className={selectedClient ? "text-gray-900" : "text-gray-500"}>
+                        {selectedClient?.label || "Select Username (Email/Mobile)"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-gray-400" />
+                    </button>
+
+                    {clientOpen ? (
+                      <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+                        <div className="border-b border-gray-100 p-3">
+                          <div className="relative">
+                            <input
+                              value={clientSearch}
+                              onChange={(e) => setClientSearch(e.target.value)}
+                              placeholder="Search client by name or email..."
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+                            />
+                            <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                          </div>
+                        </div>
+
+                        <div className="max-h-72 overflow-y-auto">
+                          {clientsLoading ? (
+                            <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-gray-600">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Loading clients...
+                            </div>
+                          ) : clientOptions.length === 0 ? (
+                            <div className="px-4 py-8 text-center text-sm text-gray-500">No clients found</div>
+                          ) : (
+                            clientOptions.map((client) => (
+                              <button
+                                key={client.id}
+                                type="button"
+                                onClick={() => {
+                                  setForm((p) => ({ ...p, clientId: client.id }));
+                                  setTouched((p) => ({ ...p, clientId: true }));
+                                  setSelectedClientOption(client);
+                                  setClientOpen(false);
+                                }}
+                                className={[
+                                  "block w-full border-b border-gray-100 px-4 py-3 text-left text-sm transition last:border-b-0",
+                                  form.clientId === client.id
+                                    ? "bg-orange-50 text-orange-700"
+                                    : "text-gray-700 hover:bg-gray-50",
+                                ].join(" ")}
+                              >
+                                <div className="font-medium">{client.label}</div>
+                                {client.email ? (
+                                  <div className="mt-0.5 text-xs text-gray-500">{client.email}</div>
+                                ) : null}
+                              </button>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setClientPage((p) => Math.max(1, p - 1))}
+                            disabled={clientPage === 1 || clientsLoading}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                            Prev
+                          </button>
+
+                          <span className="text-xs text-gray-500">
+                            Page <b>{clientPage}</b> / {clientLastPage}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => setClientPage((p) => Math.min(clientLastPage, p + 1))}
+                            disabled={clientPage === clientLastPage || clientsLoading}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Next
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
                   <FieldError msg={errors.clientId || clientsError || undefined} />
                 </div>
               ) : null}
@@ -759,7 +905,7 @@ export default function EmailConfigurationPage() {
                         </td>
                       </tr>
                     ) : (
-                      pagedRows.map((r,i) => (
+                      pagedRows.map((r, i) => (
                         <tr key={i} className="border-t hover:bg-orange-50/40">
                           <td className="px-4 py-3">
                             <div className="truncate text-gray-900" title={r.name}>
