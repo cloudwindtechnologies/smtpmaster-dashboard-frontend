@@ -254,6 +254,7 @@ return (
                       <div className="relative">
                         <Mail className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-gray-400" />
                         <input
+                          name="email"
                           type="email"
                           required
                           placeholder="you@example.com"
@@ -262,6 +263,7 @@ return (
                           disabled={loading}
                           className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-50"
                         />
+
                       </div>
                     </div>
 
@@ -269,18 +271,19 @@ return (
                       <label className="mb-1.5 block text-sm font-medium text-gray-700">Password</label>
                       <div className="relative">
                         <Lock className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          required
-                          placeholder="••••••••"
-                          value={formData.password}
-                          onChange={handleInputChange}
-                          disabled={loading}
-                          minLength={5}
-                          maxLength={20}
-                          className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-12 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-50"
-                        />
-                        <button
+                          <input
+                            name="password"
+                            type={showPassword ? "text" : "password"}
+                            required
+                            placeholder="••••••••"
+                            value={formData.password}
+                            onChange={handleInputChange}
+                            disabled={loading}
+                            minLength={5}
+                            maxLength={20}
+                            className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-12 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-50"
+                          />
+                          <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                           className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-[#ff7800]"
@@ -296,6 +299,7 @@ return (
                       <div className="relative">
                         <Lock className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-gray-400" />
                         <input
+                          name="confirmPassword"
                           type={showConfirmPassword ? "text" : "password"}
                           required
                           placeholder="••••••••"
