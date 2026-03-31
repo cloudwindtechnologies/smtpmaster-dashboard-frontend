@@ -16,6 +16,21 @@ type AddressPayload = {
 export default function AddressStepPage() {
   const router = useRouter();
 
+  function setPendingRedirect(path: string | null) {
+  if (typeof window === "undefined") return;
+  if (!path) return;
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  if (path === "/signup" || path.startsWith("/signup")) return;
+
+  sessionStorage.setItem("pending_redirect", path);
+}
+
+function getPendingRedirect() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("pending_redirect");
+}
+
   const [form, setForm] = useState<AddressPayload>({
     address: "",
     zipcode: "",
@@ -30,6 +45,15 @@ export default function AddressStepPage() {
   const [apiError, setApiError] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect");
+
+    if (redirect) {
+      setPendingRedirect(redirect);
+    }
+  }, []);
 
   const setField = (k: keyof AddressPayload, v: string) => {
     setForm((p) => ({ ...p, [k]: v }));
@@ -110,7 +134,17 @@ export default function AddressStepPage() {
       }
 
       setMessage({ type: "success", text: json?.message || "Address saved successfully!" });
-      router.replace("/signup/step-5");
+      const pendingRedirect = getPendingRedirect();
+
+      if (pendingRedirect) {
+        localStorage.setItem("wheretogo", "statp5");
+        document.cookie = "wheretogo=statp5; Path=/; Max-Age=604800; SameSite=Lax";
+        router.replace(`/signup/step-5?redirect=${encodeURIComponent(pendingRedirect)}`);
+      } else {
+        localStorage.setItem("wheretogo", "statp5");
+        document.cookie = "wheretogo=statp5; Path=/; Max-Age=604800; SameSite=Lax";
+        router.replace("/signup/step-5");
+      }
     } catch (err: any) {
       setApiError(err?.message || "Failed to save address");
       setMessage({ type: "error", text: err?.message || "Failed to save address" });
@@ -120,7 +154,17 @@ export default function AddressStepPage() {
   };
 
   const handlePrevious = () => {
-    router.replace("/signup/step-3");
+    const pendingRedirect = getPendingRedirect();
+
+    if (pendingRedirect) {
+      localStorage.setItem("wheretogo", "statp3");
+      document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800; SameSite=Lax";
+      router.replace(`/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`);
+    } else {
+      localStorage.setItem("wheretogo", "statp3");
+      document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800; SameSite=Lax";
+      router.replace("/signup/step-3");
+    }
   };
 
   return (

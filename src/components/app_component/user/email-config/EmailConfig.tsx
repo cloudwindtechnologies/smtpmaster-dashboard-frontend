@@ -22,6 +22,9 @@ import {
   Server,
   X,
   KeyRound,
+  Users,
+  BarChart,
+  Play,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { token } from "../../common/http";
@@ -35,22 +38,21 @@ type EmailConfigRow = {
   user_id: number;
   email_send_type: EmailSendType;
   host: string | null;
-  port: string | null; // ❌ ignore backend port
+  port: string | null;
   username: string | null;
-  password: string | null; // hashed (not used in UI)
+  password: string | null;
   app_url: string | null;
   status: string;
-  without_hash?: string | null; // ✅ plain password / api key
+  without_hash?: string | null;
 };
 
 type EmailConfigResponse = {
   email_config?: EmailConfigRow[];
 };
 
-export default function EmailSystemConfig() {
+export default function EmailConfig() {
   const router = useRouter();
 
-  // ✅ PUT YOUR REAL ENDPOINT HERE
   const CONFIG_URL = "api/email-config/useEmailConfig";
 
   // Tabs
@@ -63,23 +65,22 @@ export default function EmailSystemConfig() {
   const [overlayMounted, setOverlayMounted] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(false);
 
-  // ✅ Config states
+  // Config states
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const [emailSendType, setEmailSendType] = useState<EmailSendType>("smtp");
 
-  // ✅ Values from backend (used depending on send type)
-  // SMTP page values (only meaningful when email_send_type === "smtp")
+  // SMTP page values
   const [smtpHost, setSmtpHost] = useState("smtp.gmail.com");
   const [smtpUsername, setSmtpUsername] = useState("user@example.com");
   const [smtpPasswordPlain, setSmtpPasswordPlain] = useState("password123");
 
-  // Campaign page values (only meaningful when email_send_type === "app")
+  // Campaign page values
   const [campaignAppUrl, setCampaignAppUrl] = useState("");
   const [campaignUsername, setCampaignUsername] = useState("");
   const [campaignPassword, setCampaignPassword] = useState("");
 
-  // API tab API KEY (from without_hash)
+  // API tab API KEY
   const [apiKey, setApiKey] = useState("");
 
   // Visibility toggles
@@ -87,14 +88,12 @@ export default function EmailSystemConfig() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showCampaignPassword, setShowCampaignPassword] = useState(false);
 
-  // Port selection (✅ NOT from backend)
+  // Port selection
   const [port, setPort] = useState("587");
   const [encryption, setEncryption] = useState("NO");
 
-  // ✅ Put your posted image in: /public/images/api-code-actions.png
   const API_ACTIONS_IMAGE_SRC = "/images/api-code-actions.png";
 
-  // Auto encryption logic
   const handlePortChange = (value: string) => {
     setPort(value);
     if (value === "25") setEncryption("NO");
@@ -102,14 +101,12 @@ export default function EmailSystemConfig() {
     if (value === "465") setEncryption("SSL");
   };
 
-  // Copy function with feedback
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // Language icons mapping
   const getLanguageIcon = (lang: CodeTab) => {
     switch (lang) {
       case "curl":
@@ -127,7 +124,6 @@ export default function EmailSystemConfig() {
     }
   };
 
-  // Language colors
   const getLanguageColor = (lang: CodeTab) => {
     switch (lang) {
       case "curl":
@@ -145,7 +141,6 @@ export default function EmailSystemConfig() {
     }
   };
 
-  // ✅ Lock body scroll when fullscreen is open
   useEffect(() => {
     if (codeFullscreen) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
@@ -154,17 +149,14 @@ export default function EmailSystemConfig() {
     };
   }, [codeFullscreen]);
 
-  // ✅ ESC to close fullscreen
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeFullscreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Mount/unmount overlay with animation
   useEffect(() => {
     let t1: any;
     let t2: any;
@@ -186,7 +178,6 @@ export default function EmailSystemConfig() {
   const openFullscreen = () => setCodeFullscreen(true);
   const closeFullscreen = () => setCodeFullscreen(false);
 
-  // ✅ Fetch config (production)
   useEffect(() => {
     let alive = true;
     const controller = new AbortController();
@@ -200,8 +191,8 @@ export default function EmailSystemConfig() {
           method: "GET",
           headers: {
             Accept: "application/json",
-            "Content-Type": "application/json", 
-            Authorization :`Bearer ${token()}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`
           }
         });
 
@@ -224,25 +215,17 @@ export default function EmailSystemConfig() {
         const type: EmailSendType = row.email_send_type === "app" ? "app" : "smtp";
         setEmailSendType(type);
 
-        // ✅ Email Submission API -> API KEY (use without_hash)
         setApiKey((row.without_hash ?? "") || "");
 
         if (type === "smtp") {
-          // ✅ Fill SMTP tab like backend (host/username/without_hash password)
           setSmtpHost(row.host ?? "");
           setSmtpUsername(row.username ?? "");
           setSmtpPasswordPlain((row.without_hash ?? "") || "");
-          // auto switch if campaign is open
           if (mainTab === "campaign") setMainTab("smtp");
         } else {
-          // ✅ Fill Campaign tab fields from backend
-          // App url -> Campaign URL field (renamed label to App URL)
           setCampaignAppUrl(row.app_url ?? "");
-          // username -> Campaign username
           setCampaignUsername(row.username ?? "");
-          // without_hash -> Campaign password (plain)
           setCampaignPassword((row.without_hash ?? "") || "");
-          // auto switch if smtp is open
           if (mainTab === "smtp") setMainTab("campaign");
         }
       } catch (err: any) {
@@ -259,14 +242,11 @@ export default function EmailSystemConfig() {
       alive = false;
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [CONFIG_URL, router]);
 
-  // ✅ Disable logic
   const smtpDisabled = emailSendType === "app";
   const campaignDisabled = emailSendType === "smtp";
 
-  // Code examples (updated to API KEY only)
   const codeExamples = useMemo(
     () => ({
       curl: `curl -X POST https://api.example.com/v3/send   \\
@@ -461,8 +441,20 @@ curl_close(<span class="text-orange-300">$ch</span>);
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* ✅ Fullscreen overlay (Animated) */}
+    <div className="min-h-screen bg-[var(--page-bg)]" style={{ borderRadius: "var(--page-radius)" }}>
+      {/* Header using brand colors - Matching Domain Management style */}
+      <div className="bg-[var(--brand)] text-[var(--text-on-dark)]" style={{ borderRadius: "var(--page-radius)" }}>
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <h1 className="text-xl font-bold tracking-tight">
+            Email Configuration
+          </h1>
+          <p className="mt-2 text-sm text-[var(--text-on-dark)]/80">
+            Manage SMTP settings, API credentials, and campaign sender configurations
+          </p>
+        </div>
+      </div>
+
+      {/* Fullscreen overlay */}
       {overlayMounted && (
         <div
           className={[
@@ -476,10 +468,14 @@ curl_close(<span class="text-orange-300">$ch</span>);
           <div className="absolute inset-0 p-4 sm:p-6">
             <div
               className={[
-                "w-full h-full rounded-2xl overflow-hidden border border-gray-800 shadow-2xl bg-gray-900",
+                "w-full h-full rounded-2xl overflow-hidden border shadow-2xl",
                 "transition-all duration-300 ease-out will-change-transform",
                 overlayVisible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-2",
               ].join(" ")}
+              style={{
+                borderColor: 'var(--border)',
+                backgroundColor: 'var(--surface)'
+              }}
             >
               <div className="w-full h-full">
                 <CodeExamplesCard fullscreen />
@@ -487,7 +483,12 @@ curl_close(<span class="text-orange-300">$ch</span>);
 
               <button
                 onClick={closeFullscreen}
-                className="absolute top-6 right-6 p-2 rounded-xl bg-gray-900/70 border border-gray-700 hover:bg-gray-800 text-gray-200 transition-all active:scale-95"
+                className="absolute top-6 right-6 p-2 rounded-xl transition-all active:scale-95"
+                style={{
+                  backgroundColor: 'var(--surface-2)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text-soft)'
+                }}
                 title="Close"
               >
                 <X className="h-4 w-4" />
@@ -498,468 +499,608 @@ curl_close(<span class="text-orange-300">$ch</span>);
       )}
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
-        <div className="flex-1 p-8 overflow-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">Email Configuration</h1>
-          </div>
-
-          <div className="mb-6 flex items-center gap-3">
-            {loadingConfig ? (
-              <div className="text-sm text-gray-500">Loading configuration…</div>
-            ) : configError ? (
-              <div className="text-sm text-red-600">{configError}</div>
-            ) : (
-              <div className="text-sm text-gray-600">
-                Active mode:{" "}
-                <span className="font-semibold text-gray-900">{emailSendType.toUpperCase()}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Main Tabs */}
-          <div className="border-b border-gray-200 mb-6">
-            <div className="flex space-x-8">
-              <button
-                onClick={() => !smtpDisabled && setMainTab("smtp")}
-                disabled={smtpDisabled}
-                className={`pb-3 text-sm font-medium relative transition-all ${
-                  mainTab === "smtp" ? "text-orange-600" : "text-gray-500 hover:text-gray-700"
-                } ${smtpDisabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
-              >
-                <span className="flex items-center space-x-2">
-                  <Server className="h-4 w-4" />
-                  <span>Outgoing SMTP Details</span>
-                </span>
-                {mainTab === "smtp" && !smtpDisabled && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-orange-600" />
-                )}
-              </button>
-
-              <button
-                onClick={() => setMainTab("api")}
-                className={`pb-3 text-sm font-medium relative transition-all ${
-                  mainTab === "api" ? "text-orange-600" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <span className="flex items-center space-x-2">
-                  <Zap className="h-4 w-4" />
-                  <span>Email Submission API</span>
-                </span>
-                {mainTab === "api" && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-orange-600" />
-                )}
-              </button>
-
-              <button
-                onClick={() => !campaignDisabled && setMainTab("campaign")}
-                disabled={campaignDisabled}
-                className={`pb-3 text-sm font-medium relative transition-all ${
-                  mainTab === "campaign" ? "text-orange-600" : "text-gray-500 hover:text-gray-700"
-                } ${campaignDisabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
-              >
-                <span className="flex items-center space-x-2">
-                  <Send className="h-4 w-4" />
-                  <span>Email Campaign Sender</span>
-                </span>
-                {mainTab === "campaign" && !campaignDisabled && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-orange-600" />
-                )}
-              </button>
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {/* Status Bar */}
+        <div className="mb-6 flex items-center gap-3">
+          {loadingConfig ? (
+            <div className="text-sm text-[var(--text-soft)]">Loading configuration…</div>
+          ) : configError ? (
+            <div className="text-sm text-[var(--danger)]">{configError}</div>
+          ) : (
+            <div className="text-sm text-[var(--text-body)]">
+              Active mode:{" "}
+              <span className="font-semibold text-[var(--foreground)]">{emailSendType.toUpperCase()}</span>
             </div>
+          )}
+        </div>
+
+        {/* Main Tabs */}
+        <div className="border-b border-[var(--line-soft)] mb-6">
+          <div className="flex space-x-8">
+            <button
+              onClick={() => !smtpDisabled && setMainTab("smtp")}
+              disabled={smtpDisabled}
+              className={`pb-3 text-sm font-medium relative transition-all ${
+                mainTab === "smtp" ? "" : "hover:opacity-80"
+              } ${smtpDisabled ? "opacity-40 cursor-not-allowed" : ""}`}
+              style={mainTab === "smtp" ? { color: 'var(--brand)' } : { color: 'var(--text-soft)' }}
+            >
+              <span className="flex items-center space-x-2">
+                <Server className="h-4 w-4" />
+                <span>Outgoing SMTP Details</span>
+              </span>
+              {mainTab === "smtp" && !smtpDisabled && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--brand)]" />
+              )}
+            </button>
+
+            {/* <button
+              onClick={() => setMainTab("api")}
+              className={`pb-3 text-sm font-medium relative transition-all ${
+                mainTab === "api" ? "" : "hover:opacity-80"
+              }`}
+              style={mainTab === "api" ? { color: 'var(--brand)' } : { color: 'var(--text-soft)' }}
+            >
+              <span className="flex items-center space-x-2">
+                <Zap className="h-4 w-4" />
+                <span>Email Submission API</span>
+              </span>
+              {mainTab === "api" && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--brand)]" />
+              )}
+            </button> */}
+           
+            <button
+              onClick={() => !campaignDisabled && setMainTab("campaign")}
+              disabled={campaignDisabled}
+              className={`pb-3 text-sm font-medium relative transition-all ${
+                mainTab === "campaign" ? "" : "hover:opacity-80"
+              } ${campaignDisabled ? "opacity-40 cursor-not-allowed" : ""}`}
+              style={mainTab === "campaign" ? { color: 'var(--brand)' } : { color: 'var(--text-soft)' }}
+            >
+              <span className="flex items-center space-x-2">
+                <Send className="h-4 w-4" />
+                <span>Email Campaign Sender</span>
+              </span>
+              {mainTab === "campaign" && !campaignDisabled && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--brand)]" />
+              )}
+            </button>
           </div>
+        </div>
 
-          {/* SMTP TAB (backend-driven like you asked) */}
-          {mainTab === "smtp" && (
-            <div className="grid lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
-                    <Mail className="h-5 w-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Your SMTP Setting</h2>
+        {/* SMTP TAB */}
+        {mainTab === "smtp" && (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div 
+              className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)]" 
+              style={{ borderRadius: "var(--page-radius)" }}
+            >
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <Mail className="h-5 w-5 text-white" />
                 </div>
+                <h2 className="text-xl font-semibold text-[var(--text-strong)]">Your SMTP Setting</h2>
+              </div>
 
-                <div className="space-y-5">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Server Name</label>
-                    <div className="flex group">
-                      <input
-                        type="text"
-                        value={smtpHost}
-                        onChange={(e) => setSmtpHost(e.target.value)}
-                        disabled={smtpDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
-                          smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
-                        }`}
-                      />
-                      <button
-                        onClick={() => handleCopy(smtpHost, "smtp-server")}
-                        disabled={smtpDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          smtpDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
-                        }`}
-                      >
-                        {copied === "smtp-server" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ✅ Port NOT from backend */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Port</label>
-                    <select
-                      value={port}
-                      onChange={(e) => handlePortChange(e.target.value)}
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">Server Name</label>
+                  <div className="flex group">
+                    <input
+                      type="text"
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
                       disabled={smtpDisabled}
-                      className={`w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all bg-white ${
+                      className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                         smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                       }`}
+                      style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
+                    />
+                    <button
+                      onClick={() => handleCopy(smtpHost, "smtp-server")}
+                      disabled={smtpDisabled}
+                      className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                        smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
                     >
-                      <option value="25">25</option>
-                      <option value="587">587</option>
-                      <option value="465">465</option>
-                    </select>
+                      {copied === "smtp-server" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <Copy className="h-5 w-5" />}
+                    </button>
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Encryption</label>
-                    <input type="text" value={encryption} disabled className="w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-100 text-gray-700 font-medium" />
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">Port</label>
+                  <select
+                    value={port}
+                    onChange={(e) => handlePortChange(e.target.value)}
+                    disabled={smtpDisabled}
+                    className={`w-full px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
+                      smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
+                    style={{ borderRadius: "var(--page-radius)" }}
+                  >
+                    <option value="25">25</option>
+                    <option value="587">587</option>
+                    <option value="465">465</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">Encryption</label>
+                  <input 
+                    type="text" 
+                    value={encryption} 
+                    disabled 
+                    className="w-full px-4 py-3 text-sm font-medium text-[var(--text-body)] bg-[var(--surface-2)] border border-[var(--line-soft)]"
+                    style={{ borderRadius: "var(--page-radius)" }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">Username</label>
+                  <div className="flex group">
+                    <input
+                      type="text"
+                      value={smtpUsername}
+                      onChange={(e) => setSmtpUsername(e.target.value)}
+                      disabled={smtpDisabled}
+                      className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
+                        smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
+                    />
+                    <button
+                      onClick={() => handleCopy(smtpUsername, "smtp-user")}
+                      disabled={smtpDisabled}
+                      className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                        smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
+                    >
+                      {copied === "smtp-user" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <Copy className="h-5 w-5" />}
+                    </button>
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
-                    <div className="flex group">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">Password</label>
+                  <div className="flex">
+                    <div className="relative flex-1">
                       <input
-                        type="text"
-                        value={smtpUsername}
-                        onChange={(e) => setSmtpUsername(e.target.value)}
+                        type={showSmtpPassword ? "text" : "password"}
+                        value={smtpPasswordPlain}
+                        onChange={(e) => setSmtpPasswordPlain(e.target.value)}
                         disabled={smtpDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
+                        className={`w-full px-4 py-3 pr-12 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                           smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
                       />
                       <button
-                        onClick={() => handleCopy(smtpUsername, "smtp-user")}
+                        onClick={() => setShowSmtpPassword(!showSmtpPassword)}
                         disabled={smtpDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          smtpDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
-                        }`}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-soft)]"
                       >
-                        {copied === "smtp-user" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {showSmtpPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                       </button>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                    <div className="flex">
-                      <div className="relative flex-1">
-                        <input
-                          type={showSmtpPassword ? "text" : "password"}
-                          value={smtpPasswordPlain}
-                          onChange={(e) => setSmtpPasswordPlain(e.target.value)}
-                          disabled={smtpDisabled}
-                          className={`w-full border border-gray-200 rounded-l-xl px-4 py-3 pr-12 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
-                            smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
-                          }`}
-                        />
-                        <button
-                          onClick={() => setShowSmtpPassword(!showSmtpPassword)}
-                          disabled={smtpDisabled}
-                          className={`absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 ${
-                            smtpDisabled ? "opacity-50 cursor-not-allowed hover:text-gray-500" : ""
-                          }`}
-                        >
-                          {showSmtpPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                      <button
-                        onClick={() => handleCopy(smtpPasswordPlain, "smtp-pass")}
-                        disabled={smtpDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          smtpDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
-                        }`}
-                      >
-                        {copied === "smtp-pass" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column - Test SMTP (Send button bottom) */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-green-200">
-                    <Send className="h-5 w-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Test SMTP</h2>
-                </div>
-
-                <div className="space-y-4 flex-1">
-                  <input type="email" placeholder="From Email" disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                  <input type="email" placeholder="To Email" disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                  <input type="text" placeholder="Subject" disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                  <textarea placeholder="Body (HTML)" rows={4} disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                </div>
-
-                <div className="mt-auto pt-4">
-                  <div className="flex items-center space-x-3">
-                    <input type="text" placeholder="Captcha" disabled={smtpDisabled} className={`flex-1 border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                    <button disabled={smtpDisabled} className={`px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:from-orange-600 hover:to-orange-700 transition-all shadow-lg shadow-orange-200 flex items-center space-x-2 font-medium ${smtpDisabled ? "opacity-50 cursor-not-allowed hover:from-orange-500 hover:to-orange-600" : ""}`}>
-                      <Send className="h-4 w-4" />
-                      <span>Send</span>
+                    <button
+                      onClick={() => handleCopy(smtpPasswordPlain, "smtp-pass")}
+                      disabled={smtpDisabled}
+                      className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                        smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
+                    >
+                      {copied === "smtp-pass" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <Copy className="h-5 w-5" />}
                     </button>
                   </div>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* API TAB (remove username/pass, add API KEY) */}
-          {mainTab === "api" && (
-            <div className="grid lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-200">
-                    <Zap className="h-5 w-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Email Submission API</h2>
-                </div>
-
-                <div className="space-y-5">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">API URL</label>
-                    <div className="flex group">
-                      <input
-                        type="text"
-                        defaultValue="https://api.example.com/v3/send "
-                        className="flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
-                      />
-                      <button
-                        onClick={() => handleCopy("https://api.example.com/v3/send ", "api-url")}
-                        className="px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all"
-                      >
-                        {copied === "api-url" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ✅ API KEY */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">API KEY</label>
-                    <div className="flex">
-                      <div className="relative flex-1">
-                        <input
-                          type={showApiKey ? "text" : "password"}
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          className="w-full border border-gray-200 rounded-l-xl px-4 py-3 pr-12 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
-                        />
-                        <button
-                          onClick={() => setShowApiKey(!showApiKey)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                          title={showApiKey ? "Hide" : "Show"}
-                        >
-                          {showApiKey ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                      <button
-                        onClick={() => handleCopy(apiKey, "api-key")}
-                        className="px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all"
-                        title="Copy API Key"
-                      >
-                        {copied === "api-key" ? <Check className="h-5 w-5 text-green-600" /> : <KeyRound className="h-5 w-5 text-gray-600" />}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      This API key is loaded from backend <span className="font-medium">without_hash</span>.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <CodeExamplesCard />
-            </div>
-          )}
-
-          {/* CAMPAIGN TAB (use app_url, username, without_hash) */}
-          {mainTab === "campaign" && (
-            <div className="grid lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-green-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg shadow-green-200">
-                    <Send className="h-5 w-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Email Campaign Sender</h2>
-                </div>
-
-                <div className="space-y-5">
-                  <div className="bg-gradient-to-r from-orange-50 to-yellow-50 p-4 rounded-xl border border-orange-100">
-                    <p className="text-sm text-gray-700">
-                      Configure your email campaign sender settings below. These settings will be used for all outgoing campaign emails.
-                    </p>
-                  </div>
-
-                  {/* ✅ App URL (label changed) */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">App URL</label>
-                    <div className="flex group">
-                      <input
-                        type="text"
-                        value={campaignAppUrl}
-                        onChange={(e) => setCampaignAppUrl(e.target.value)}
-                        disabled={campaignDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
-                        }`}
-                      />
-                      <button
-                        onClick={() => handleCopy(campaignAppUrl, "camp-url")}
-                        disabled={campaignDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
-                        }`}
-                      >
-                        {copied === "camp-url" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ✅ Username from backend username */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
-                    <div className="flex group">
-                      <input
-                        type="text"
-                        value={campaignUsername}
-                        onChange={(e) => setCampaignUsername(e.target.value)}
-                        disabled={campaignDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
-                        }`}
-                      />
-                      <button
-                        onClick={() => handleCopy(campaignUsername, "camp-user")}
-                        disabled={campaignDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
-                        }`}
-                      >
-                        {copied === "camp-user" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ✅ Password from backend without_hash */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                    <div className="flex">
-                      <div className="relative flex-1">
-                        <input
-                          type={showCampaignPassword ? "text" : "password"}
-                          value={campaignPassword}
-                          onChange={(e) => setCampaignPassword(e.target.value)}
-                          disabled={campaignDisabled}
-                          className={`w-full border border-gray-200 rounded-l-xl px-4 py-3 pr-12 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
-                            campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
-                          }`}
-                        />
-                        <button
-                          onClick={() => setShowCampaignPassword(!showCampaignPassword)}
-                          disabled={campaignDisabled}
-                          className={`absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 ${
-                            campaignDisabled ? "opacity-50 cursor-not-allowed hover:text-gray-500" : ""
-                          }`}
-                        >
-                          {showCampaignPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                        </button>
-                      </div>
-                      <button
-                        onClick={() => handleCopy(campaignPassword, "camp-pass")}
-                        disabled={campaignDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
-                        }`}
-                      >
-                        {copied === "camp-pass" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column - Open Sending App (button opens app url) */}
-              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-32 translate-x-32" />
-                <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full translate-y-24 -translate-x-24" />
-
-                <div className="relative z-10">
-                  <div className="flex items-center space-x-3 mb-6">
-                    <div className="h-12 w-12 bg-white/20 rounded-xl backdrop-blur-sm flex items-center justify-center">
+            {/* Right Column - Test SMTP */}
+            <div 
+              className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)] flex flex-col h-full" 
+              style={{ borderRadius: "var(--page-radius)" }}
+            >
+              <div className="relative mb-6">
+                <div className="absolute -top-2 -right-2 w-12 h-12 rounded-full animate-ping opacity-75 bg-[var(--brand-soft)]" />
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center space-x-3">
+                    <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg transform rotate-3">
                       <Send className="h-6 w-6 text-white" />
                     </div>
-                    <h2 className="text-2xl font-bold">Quick Actions</h2>
-                  </div>
-
-                  <div className="space-y-6">
-                    <p className="text-white/90 text-lg leading-relaxed">
-                      Launch the sending application to start your email campaign immediately.
-                    </p>
-
-                    <button
-                      disabled={campaignDisabled || !campaignAppUrl}
-                      onClick={() => {
-                        if (!campaignAppUrl) return;
-                        window.open(campaignAppUrl, "_blank", "noopener,noreferrer");
-                      }}
-                      className={`w-full px-6 py-4 bg-white text-orange-600 rounded-xl hover:bg-orange-50 transition-all flex items-center justify-center space-x-3 text-lg font-semibold shadow-xl active:scale-[0.98] ${
-                        campaignDisabled || !campaignAppUrl ? "opacity-70 cursor-not-allowed hover:bg-white" : ""
-                      }`}
-                    >
-                      <Send className="h-5 w-5" />
-                      <span>Open Sending App</span>
-                    </button>
-
-                    <div className="grid grid-cols-3 gap-3 mt-6">
-                      <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm">
-                        <div className="text-2xl font-bold">12</div>
-                        <div className="text-xs text-white/70">Active</div>
-                      </div>
-                      <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm">
-                        <div className="text-2xl font-bold">5.2K</div>
-                        <div className="text-xs text-white/70">Sent</div>
-                      </div>
-                      <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm">
-                        <div className="text-2xl font-bold">98%</div>
-                        <div className="text-xs text-white/70">Success</div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-[var(--text-strong)]">
+                        Test SMTP
+                      </h2>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <span 
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: 'var(--success-soft)',
+                            color: 'var(--success)'
+                          }}
+                        >
+                          Live Preview
+                        </span>
+                        <span className="text-xs text-[var(--text-faint)]">v2.0 - Beta</span>
                       </div>
                     </div>
+                  </div>
+                  
+                  <div className="text-center">
+                    <div className="text-2xl font-bold font-mono text-[var(--brand)]">14d</div>
+                    <div className="text-[10px] text-[var(--text-faint)]">until launch</div>
+                  </div>
+                </div>
+              </div>
 
-                    <div className="border-t border-white/20 pt-4 mt-4">
-                      <p className="text-xs text-white/60">
-                        The sending app allows you to manage campaigns, track deliveries, and analyze performance in real-time.
-                      </p>
-                      <p className="text-xs text-white/60 mt-2">
-                        {campaignAppUrl ? (
-                          <>
-                            App URL: <span className="text-white font-medium">{campaignAppUrl}</span>
-                          </>
-                        ) : (
-                          <>App URL not found from backend.</>
-                        )}
-                      </p>
+              <div 
+                className="relative group mb-6 cursor-pointer" 
+                onClick={() => window.open('https://youtube.com/watch?v=demo', '_blank')}
+              >
+                <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
+                  <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                    <Play className="h-6 w-6 ml-0.5 text-[var(--brand)]" />
+                  </div>
+                </div>
+                <div 
+                  className="relative rounded-xl overflow-hidden h-32"
+                  style={{ background: `linear-gradient(135deg, var(--brand), var(--brand-strong))` }}
+                >
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center text-white">
+                      <Mail className="h-8 w-8 mx-auto mb-2 opacity-75" />
+                      <p className="text-xs font-medium">Watch Demo Video</p>
+                      <p className="text-[10px] opacity-75">See SMTP testing in action</p>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Done */}
-        </div>
-      </main>
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {[
+                  { title: "Instant Testing", desc: "Send test emails in seconds", icon: Zap, color: "var(--brand)" },
+                  { title: "Debug Mode", desc: "See raw SMTP responses", icon: Terminal, color: "var(--info)" },
+                  { title: "Templates", desc: "Preview HTML emails", icon: FileCode, color: "var(--primary)" },
+                  { title: "Analytics", desc: "Track delivery metrics", icon: BarChart, color: "var(--success)" }
+                ].map((feature, idx) => (
+                  <div 
+                    key={idx} 
+                    className="p-3 rounded-xl transition-all hover:scale-105 hover:shadow-md bg-[var(--surface-2)] border border-[var(--line-soft)]"
+                    style={{ borderRadius: "var(--page-radius)" }}
+                  >
+                    <feature.icon className="h-5 w-5 mb-2" style={{ color: feature.color }} />
+                    <p className="text-sm font-medium text-[var(--text-strong)]">{feature.title}</p>
+                    <p className="text-xs mt-1 text-[var(--text-faint)]">{feature.desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <p className="text-xs font-medium flex items-center space-x-1 text-[var(--text-soft)]">
+                  <Sparkles className="h-3 w-3" />
+                  <span>Try it now (demo mode)</span>
+                </p>
+                
+                <div className="relative">
+                  <input 
+                    type="email" 
+                    placeholder="recipient@example.com" 
+                    disabled
+                    className="w-full px-4 py-2.5 text-sm cursor-not-allowed bg-[var(--surface-soft)] border border-[var(--line-soft)] text-[var(--text-body)]"
+                    style={{ borderRadius: "var(--page-radius)" }}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-1.5 h-1.5 rounded-full animate-pulse bg-[var(--brand)]" />
+                  </div>
+                </div>
+                
+                <button 
+                  disabled
+                  className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center space-x-2 cursor-not-allowed opacity-70"
+                  style={{
+                    backgroundColor: 'var(--brand-soft)',
+                    color: 'var(--brand-strong)',
+                    borderRadius: "var(--page-radius)"
+                  }}
+                >
+                  <Send className="h-4 w-4" />
+                  <span>Send Test Email (Coming Soon)</span>
+                </button>
+              </div>
+
+              <div className="mt-auto pt-4 border-t border-[var(--line-soft)]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div 
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: 'var(--surface-soft)' }}
+                    >
+                      <Users className="h-4 w-4 text-[var(--brand)]" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-[var(--text-strong)]">Join 500+ beta testers</p>
+                      <p className="text-[10px] text-[var(--text-faint)]">Be first to try this feature</p>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    className="px-4 py-2 rounded-lg text-xs font-medium transition-all hover:scale-105 active:scale-95 bg-[var(--brand)] text-white"
+                    style={{ borderRadius: "var(--page-radius)" }}
+                    onClick={() => {
+                      alert('Request sent! We\'ll notify you when SMTP testing is ready.');
+                    }}
+                  >
+                    Request Access →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* API TAB */}
+        {mainTab === "api" && (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div 
+              className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)]" 
+              style={{ borderRadius: "var(--page-radius)" }}
+            >
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <Zap className="h-5 w-5 text-white" />
+                </div>
+                <h2 className="text-xl font-semibold text-[var(--text-strong)]">Email Submission API</h2>
+              </div>
+
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">API URL</label>
+                  <div className="flex group">
+                    <input
+                      type="text"
+                      defaultValue="https://api.example.com/v3/send"
+                      className="flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)]"
+                      style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
+                    />
+                    <button
+                      onClick={() => handleCopy("https://api.example.com/v3/send", "api-url")}
+                      className="px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)]"
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
+                    >
+                      {copied === "api-url" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <Copy className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">API KEY</label>
+                  <div className="flex">
+                    <div className="relative flex-1">
+                      <input
+                        type={showApiKey ? "text" : "password"}
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        className="w-full px-4 py-3 pr-12 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)]"
+                        style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
+                      />
+                      <button
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-soft)]"
+                      >
+                        {showApiKey ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => handleCopy(apiKey, "api-key")}
+                      className="px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)]"
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
+                    >
+                      {copied === "api-key" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <KeyRound className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  <p className="text-xs mt-2 text-[var(--text-faint)]">
+                    This API key is loaded from backend <span className="font-medium">without_hash</span>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <CodeExamplesCard />
+          </div>
+        )}
+
+        {/* CAMPAIGN TAB */}
+        {mainTab === "campaign" && (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div 
+              className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)]" 
+              style={{ borderRadius: "var(--page-radius)" }}
+            >
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="h-10 w-10 bg-gradient-to-br from-green-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <Send className="h-5 w-5 text-white" />
+                </div>
+                <h2 className="text-xl font-semibold text-[var(--text-strong)]">Email Campaign Sender</h2>
+              </div>
+
+              <div className="space-y-5">
+                <div 
+                  className="p-4 rounded-xl border bg-[var(--brand-soft)] border-[var(--line-soft)]"
+                  style={{ borderRadius: "var(--page-radius)" }}
+                >
+                  <p className="text-sm text-[var(--text-body)]">
+                    Configure your email campaign sender settings below. These settings will be used for all outgoing campaign emails.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">App URL</label>
+                  <div className="flex group">
+                    <input
+                      type="text"
+                      value={campaignAppUrl}
+                      onChange={(e) => setCampaignAppUrl(e.target.value)}
+                      disabled={campaignDisabled}
+                      className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
+                        campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
+                    />
+                    <button
+                      onClick={() => handleCopy(campaignAppUrl, "camp-url")}
+                      disabled={campaignDisabled}
+                      className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                        campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
+                    >
+                      {copied === "camp-url" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <Copy className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">Username</label>
+                  <div className="flex group">
+                    <input
+                      type="text"
+                      value={campaignUsername}
+                      onChange={(e) => setCampaignUsername(e.target.value)}
+                      disabled={campaignDisabled}
+                      className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
+                        campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
+                    />
+                    <button
+                      onClick={() => handleCopy(campaignUsername, "camp-user")}
+                      disabled={campaignDisabled}
+                      className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                        campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
+                    >
+                      {copied === "camp-user" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <Copy className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">Password</label>
+                  <div className="flex">
+                    <div className="relative flex-1">
+                      <input
+                        type={showCampaignPassword ? "text" : "password"}
+                        value={campaignPassword}
+                        onChange={(e) => setCampaignPassword(e.target.value)}
+                        disabled={campaignDisabled}
+                        className={`w-full px-4 py-3 pr-12 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
+                          campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
+                        style={{ borderRadius: "var(--page-radius) 0 0 var(--page-radius)" }}
+                      />
+                      <button
+                        onClick={() => setShowCampaignPassword(!showCampaignPassword)}
+                        disabled={campaignDisabled}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-soft)]"
+                      >
+                        {showCampaignPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => handleCopy(campaignPassword, "camp-pass")}
+                      disabled={campaignDisabled}
+                      className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                        campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
+                      style={{ borderRadius: "0 var(--page-radius) var(--page-radius) 0" }}
+                    >
+                      {copied === "camp-pass" ? <Check className="h-5 w-5 text-[var(--success)]" /> : <Copy className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Quick Actions */}
+            <div 
+              className="rounded-2xl shadow-xl p-6 text-white relative overflow-hidden"
+              style={{
+                background: `linear-gradient(135deg, var(--brand), var(--brand-strong))`,
+                boxShadow: 'var(--shadow-panel)',
+                borderRadius: "var(--page-radius)"
+              }}
+            >
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-32 translate-x-32" />
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full translate-y-24 -translate-x-24" />
+
+              <div className="relative z-10">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="h-12 w-12 bg-white/20 rounded-xl backdrop-blur-sm flex items-center justify-center">
+                    <Send className="h-6 w-6 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-bold">Quick Actions</h2>
+                </div>
+
+                <div className="space-y-6">
+                  <p className="text-white/90 text-lg leading-relaxed">
+                    Launch the sending application to start your email campaign immediately.
+                  </p>
+
+                  <button
+                    disabled={campaignDisabled || !campaignAppUrl}
+                    onClick={() => {
+                      if (!campaignAppUrl) return;
+                      window.open(campaignAppUrl, "_blank", "noopener,noreferrer");
+                    }}
+                    className="w-full px-6 py-4 rounded-xl transition-all flex items-center justify-center space-x-3 text-lg font-semibold shadow-xl active:scale-[0.98] bg-white text-[var(--brand)]"
+                    style={{ borderRadius: "var(--page-radius)" }}
+                  >
+                    <Send className="h-5 w-5" />
+                    <span>Open Sending App</span>
+                  </button>
+
+                  <div className="grid grid-cols-3 gap-3 mt-6">
+                    <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm" style={{ borderRadius: "var(--page-radius)" }}>
+                      <div className="text-2xl font-bold">12</div>
+                      <div className="text-xs text-white/70">Active</div>
+                    </div>
+                    <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm" style={{ borderRadius: "var(--page-radius)" }}>
+                      <div className="text-2xl font-bold">5.2K</div>
+                      <div className="text-xs text-white/70">Sent</div>
+                    </div>
+                    <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm" style={{ borderRadius: "var(--page-radius)" }}>
+                      <div className="text-2xl font-bold">98%</div>
+                      <div className="text-xs text-white/70">Success</div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-white/20 pt-4 mt-4">
+                    <p className="text-xs text-white/60">
+                      The sending app allows you to manage campaigns, track deliveries, and analyze performance in real-time.
+                    </p>
+                    <p className="text-xs text-white/60 mt-2">
+                      {campaignAppUrl ? (
+                        <>
+                          App URL: <span className="text-white font-medium">{campaignAppUrl}</span>
+                        </>
+                      ) : (
+                        <>App URL not found from backend.</>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

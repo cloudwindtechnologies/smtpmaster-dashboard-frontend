@@ -23,6 +23,26 @@ type CountryItem = {
 };
 
 export default function PhoneVerifyPage() {
+  function setPendingRedirect(path: string | null) {
+  if (typeof window === "undefined") return;
+  if (!path) return;
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  if (path === "/signup" || path.startsWith("/signup")) return;
+
+  sessionStorage.setItem("pending_redirect", path);
+}
+
+function getPendingRedirect() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("pending_redirect");
+}
+
+function clearPendingRedirect() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem("pending_redirect");
+}
+
   const [countryCode, setCountryCode] = useState("+91");
   const [countries, setCountries] = useState<CountryItem[]>([]);
   const [mobile, setMobile] = useState("");
@@ -33,6 +53,14 @@ export default function PhoneVerifyPage() {
     useState<ConfirmationResult | null>(null);
   const [message, setMessage] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect");
+
+    if (redirect) {
+      setPendingRedirect(redirect);
+    }
+  }, []);
 
   const fullNumber = `${countryCode}${digitsOnly(mobile)}`;
 
@@ -195,7 +223,25 @@ export default function PhoneVerifyPage() {
       }
 
       setTimeout(() => {
-        window.location.href = "/login";
+        const pendingRedirect = getPendingRedirect();
+
+        // ✅ very important: mark signup complete BEFORE redirect
+        localStorage.setItem("wheretogo", "dashboard");
+        document.cookie = "wheretogo=dashboard; Path=/; Max-Age=604800; SameSite=Lax";
+
+        if (data.token) {
+          localStorage.setItem("token", data.token);
+          document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=604800; SameSite=Lax`;
+        }
+
+        clearPendingRedirect();
+
+        if (pendingRedirect) {
+          window.location.href = pendingRedirect;
+          return;
+        }
+
+        window.location.href = "/";
       }, 2000);
     } catch (error: any) {
       console.error("Verify error:", error);

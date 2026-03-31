@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Contact, ShoppingCart, Loader2 } from "lucide-react";
 
@@ -20,6 +20,21 @@ function getMaxValue(range: string) {
 export default function OtherInfoPage() {
   const router = useRouter();
 
+  function setPendingRedirect(path: string | null) {
+  if (typeof window === "undefined") return;
+  if (!path) return;
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  if (path === "/signup" || path.startsWith("/signup")) return;
+
+  sessionStorage.setItem("pending_redirect", path);
+  }
+
+function getPendingRedirect() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("pending_redirect");
+}
+
   const [form, setForm] = useState<FormState>({
     hmpiyt: "",
     hmcdh: "",
@@ -30,6 +45,15 @@ export default function OtherInfoPage() {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect");
+
+    if (redirect) {
+      setPendingRedirect(redirect);
+    }
+  }, []);
 
   const payload = useMemo(() => {
     return {
@@ -71,13 +95,36 @@ export default function OtherInfoPage() {
       }
 
       setSuccessMsg(data?.message || "Saved successfully!");
-      router.replace("/signup/step-7");
+      const pendingRedirect = getPendingRedirect();
+
+      if (pendingRedirect) {
+        localStorage.setItem("wheretogo", "statp7");
+        document.cookie = "wheretogo=statp7; Path=/; Max-Age=604800; SameSite=Lax";
+        router.replace(`/signup/step-7?redirect=${encodeURIComponent(pendingRedirect)}`);
+      } else {
+        localStorage.setItem("wheretogo", "statp7");
+        document.cookie = "wheretogo=statp7; Path=/; Max-Age=604800; SameSite=Lax";
+        router.replace("/signup/step-7");
+      }
     } catch (err: any) {
       setApiError(err?.message || "Failed to save");
     } finally {
       setLoading(false);
     }
   };
+  const handelback=() => {
+  const pendingRedirect = getPendingRedirect();
+
+  if (pendingRedirect) {
+    localStorage.setItem("wheretogo", "stat4");
+    document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
+    router.replace(`/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`);
+  } else {
+    localStorage.setItem("wheretogo", "stat4");
+    document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
+    router.replace("/signup/step-4");
+  }
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-100 px-4">
@@ -213,7 +260,7 @@ export default function OtherInfoPage() {
           <div className="flex items-center justify-between pt-2">
             <button
               type="button"
-              onClick={() => router.back()}
+              onClick={() => handelback}
               disabled={loading}
               className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             >

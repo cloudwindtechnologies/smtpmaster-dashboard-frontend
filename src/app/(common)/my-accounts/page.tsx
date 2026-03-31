@@ -3,7 +3,7 @@
 import Header from '@/components/app_component/common/header'
 import SidebarNav from '@/components/app_component/common/sidebar'
 import SuperAdminSidebar from '@/components/app_component/common/super-admin-sidebar';
-import ChangePassword from '@/components/app_component/user/my-account/change-password-component'
+import MyAccount from '@/components/app_component/user/my-account/change-password-component';
 import { AUTH_KEYS, isUserTab } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -57,7 +57,7 @@ export default function Page() {
            <Header/>
            
            <main className="flex-1 p-4 lg:p-6">
-           <ChangePassword/>
+           <MyAccount/>
          </main>
          </div>
          

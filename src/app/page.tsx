@@ -91,8 +91,7 @@ export default function Home() {
             <Header />
             <main className="flex-1 p-4 lg:p-6 flex items-center justify-center">
               <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                <p className="mt-2 text-sm text-muted-foreground">Loading your dashboard...</p>
+                
               </div>
             </main>
           </div>

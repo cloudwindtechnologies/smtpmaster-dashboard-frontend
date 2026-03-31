@@ -1,6 +1,7 @@
 import Header from '@/components/app_component/common/header'
 import SidebarNav from '@/components/app_component/common/sidebar'
-import PackageInfo from '@/components/app_component/user/package-info/package-info_component'
+import MyPlans from '@/components/app_component/user/my-plans/my-plans-component'
+
 
 export default function Page() {
   return (
@@ -13,9 +14,9 @@ export default function Page() {
          {/* Main content */}
          <div className="flex-1 overflow-y-auto">
            <Header/>
-           <main className="flex-1 p-4 lg:p-6">
-            
-         </main>
+           <div className="flex-1 p-4 lg:p-6">
+           <MyPlans/>
+         </div>
          </div>
          
        </div>

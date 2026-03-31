@@ -20,7 +20,7 @@
 // components/app_component/common/http.ts
 import { getToken as getAuthToken } from '@/lib/auth';
 
-export const apiURL = "http://localhost:8000";
+export const apiURL = process.env.BACKEND_URL;
 
 export const token = (): string | null => {
   return getAuthToken(); // Use the tab-aware token function

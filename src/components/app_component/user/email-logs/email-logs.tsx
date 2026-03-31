@@ -8,6 +8,15 @@ import {
   ChevronsRight,
   Download,
   Calendar,
+  Search,
+  RefreshCw,
+  Loader2,
+  Mail,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 type ApiLogRow = {
@@ -46,13 +55,32 @@ function getDownloadHeaders() {
   };
 }
 
-function badge(bounceColumn: string) {
-  if (bounceColumn === "Soft Bounce" ) {
-    return { label: "Soft Bounce", cls: "bg-yellow-500 text-black " };
-  }else if(bounceColumn === "Hard Bounce"){
-    return { label: "Hard Bounce", cls: "bg-red-500 text-white " }
+function getStatusConfig(bounceColumn: string) {
+  const column = bounceColumn?.toLowerCase() || "";
+  if (column === "soft bounce" || column === "soft_bounce") {
+    return { 
+      label: "Soft Bounce", 
+      color: "text-[var(--warning)]",
+      bg: "bg-[var(--warning-soft)]",
+      border: "border-[var(--warning)]/20",
+      icon: AlertCircle
+    };
+  } else if (column === "hard bounce" || column === "hard_bounce") {
+    return { 
+      label: "Hard Bounce", 
+      color: "text-[var(--danger)]",
+      bg: "bg-[var(--danger-soft)]",
+      border: "border-[var(--danger)]/20",
+      icon: XCircle
+    };
   }
-  return { label: "Delivered", cls: "bg-green-600 text-white " };
+  return { 
+    label: "Delivered", 
+    color: "text-[var(--success)]",
+    bg: "bg-[var(--success-soft)]",
+    border: "border-[var(--success)]/20",
+    icon: CheckCircle
+  };
 }
 
 function toInt(val: any, fallback: number) {
@@ -63,9 +91,7 @@ function toInt(val: any, fallback: number) {
 
 function formatYmdInput(value: string) {
   const cleaned = value.replace(/[^\d-]/g, "").slice(0, 10);
-
   const digits = cleaned.replace(/\D/g, "").slice(0, 8);
-
   if (digits.length <= 4) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
@@ -75,15 +101,12 @@ function isValidYmdDate(value: string) {
   if (!value) return true;
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
-
   const [, yyyy, mm, dd] = match;
   const year = Number(yyyy);
   const month = Number(mm);
   const day = Number(dd);
-
   if (month < 1 || month > 12) return false;
   if (day < 1 || day > 31) return false;
-
   const date = new Date(year, month - 1, day);
   return (
     date.getFullYear() === year &&
@@ -112,7 +135,6 @@ function DateInputWithPicker({
   const openPicker = () => {
     const el = hiddenDateRef.current;
     if (!el) return;
-
     if ((el as any).showPicker) {
       (el as any).showPicker();
     } else {
@@ -123,8 +145,9 @@ function DateInputWithPicker({
 
   return (
     <div>
-      <label className="block text-[11px] font-semibold text-gray-700 mb-1">{label}</label>
-
+      <label className="block text-xs font-medium mb-1.5 text-[var(--text-soft)]">
+        {label}
+      </label>
       <div className="relative">
         <input
           type="text"
@@ -133,19 +156,16 @@ function DateInputWithPicker({
           value={value}
           onChange={(e) => onChange(formatYmdInput(e.target.value))}
           maxLength={10}
-          className={`w-full rounded border bg-white px-3 py-2 pr-10 text-xs outline-none ${
-            invalid ? "border-red-400 focus:border-red-500" : "border-gray-300 focus:border-blue-500"
-          }`}
+          className="w-full border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2.5 pr-10 text-sm text-[var(--text-strong)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)]"
+          style={{borderRadius: "var(--page-radius)"}}
         />
-
         <button
           type="button"
           onClick={openPicker}
-          className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700"
+          className="absolute inset-y-0 right-0 flex items-center px-3 text-[var(--text-soft)] hover:text-[var(--text-body)] transition-colors"
         >
           <Calendar className="h-4 w-4" />
         </button>
-
         <input
           ref={hiddenDateRef}
           type="date"
@@ -156,7 +176,40 @@ function DateInputWithPicker({
           aria-hidden="true"
         />
       </div>
+      {invalid && (
+        <p className="mt-1 text-xs text-[var(--danger)]">Invalid date format</p>
+      )}
     </div>
+  );
+}
+
+// Skeleton Loader Component
+function TableSkeleton() {
+  return (
+    <tbody className="divide-y divide-[var(--line-soft)]">
+      {[...Array(5)].map((_, idx) => (
+        <tr key={idx} className="animate-pulse">
+          <td className="px-4 py-3">
+            <div className="h-6 w-24 bg-[var(--line-soft)] rounded"></div>
+          </td>
+          <td className="px-4 py-3">
+            <div className="h-4 w-32 bg-[var(--line-soft)] rounded"></div>
+          </td>
+          <td className="px-4 py-3">
+            <div className="h-4 w-36 bg-[var(--line-soft)] rounded"></div>
+          </td>
+          <td className="px-4 py-3">
+            <div className="h-4 w-28 bg-[var(--line-soft)] rounded"></div>
+          </td>
+          <td className="px-4 py-3">
+            <div className="h-4 w-48 bg-[var(--line-soft)] rounded"></div>
+          </td>
+          <td className="px-4 py-3">
+            <div className="h-8 w-8 bg-[var(--line-soft)] rounded"></div>
+          </td>
+        </tr>
+      ))}
+    </tbody>
   );
 }
 
@@ -167,6 +220,8 @@ export default function EmailLogsPage() {
   const [search, setSearch] = useState("");
   const [searchUi, setSearchUi] = useState("");
   const [dateError, setDateError] = useState("");
+  const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchUi), 400);
@@ -185,7 +240,7 @@ export default function EmailLogsPage() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [alldata, useAlldata] = useState(0);
+  const [alldata, setAlldata] = useState(0);
 
   const requestSeq = useRef(0);
 
@@ -197,12 +252,10 @@ export default function EmailLogsPage() {
       setDateError("Please enter date in yyyy-mm-dd format.");
       return;
     }
-
     if (fromDate && toDate && fromDate > toDate) {
       setDateError("From Date cannot be greater than To Date.");
       return;
     }
-
     setDateError("");
   }, [fromDateInvalid, toDateInvalid, fromDate, toDate]);
 
@@ -257,7 +310,7 @@ export default function EmailLogsPage() {
         const data = Array.isArray(json.data) ? json.data : [];
         const totalData = json?.recordsTotal ?? 0;
 
-        useAlldata(totalData);
+        setAlldata(totalData);
         setRows(data);
         setTotal(Number(totalData));
 
@@ -289,6 +342,17 @@ export default function EmailLogsPage() {
     return () => controller.abort();
   }, [payloadKey, page, perPage, dateError]);
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    // Trigger a re-fetch by updating a ref or forcing a re-run of the effect
+    requestSeq.current++;
+    setPage(1);
+    // Small delay to show skeleton
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 500);
+  };
+
   const downloadLogs = async () => {
     try {
       if (dateError) {
@@ -300,7 +364,6 @@ export default function EmailLogsPage() {
       setErrorMsg("");
 
       const params = new URLSearchParams();
-
       if (search.trim()) params.append("search", search.trim());
       if (fromDate) params.append("email_log_from_date", fromDate);
       if (toDate) params.append("email_log_to_date", toDate);
@@ -314,21 +377,17 @@ export default function EmailLogsPage() {
 
       if (!res.ok) {
         let msg = `Download failed (${res.status})`;
-
         try {
           const json = await res.json();
           msg = json?.errors || json?.message || msg;
         } catch {}
-
         throw new Error(msg);
       }
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
-
       const contentDisposition = res.headers.get("Content-Disposition");
       let fileName = "email_logs.csv";
-
       if (contentDisposition) {
         const match = contentDisposition.match(/filename="?([^"]+)"?/);
         if (match?.[1]) fileName = match[1];
@@ -340,7 +399,6 @@ export default function EmailLogsPage() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       setErrorMsg(err?.message || "Unable to download logs");
@@ -366,105 +424,148 @@ export default function EmailLogsPage() {
   const pageNumbers = useMemo(() => {
     const lp = Math.max(1, lastPage);
     const p = safePage;
-
     const out: (number | "...")[] = [];
-    const push = (v: number | "...") => out.push(v);
-
+    
     if (lp <= 7) {
-      for (let i = 1; i <= lp; i++) push(i);
+      for (let i = 1; i <= lp; i++) out.push(i);
       return out;
     }
-
-    push(1);
-    if (p > 3) push("...");
-
+    
+    out.push(1);
+    if (p > 3) out.push("...");
     const start = Math.max(2, p - 1);
     const end = Math.min(lp - 1, p + 1);
-    for (let i = start; i <= end; i++) push(i);
-
-    if (p < lp - 2) push("...");
-    push(lp);
-
+    for (let i = start; i <= end; i++) out.push(i);
+    if (p < lp - 2) out.push("...");
+    out.push(lp);
     return out;
   }, [lastPage, safePage]);
 
+
+
+  // Case-insensitive filter for client-side (if needed)
+  const filteredRows = useMemo(() => {
+    if (!search.trim()) return rows;
+    const searchLower = search.toLowerCase();
+    return rows.filter(row => 
+      row.orig?.toLowerCase().includes(searchLower) ||
+      row.rcpt?.toLowerCase().includes(searchLower) ||
+      row.header_Subject?.toLowerCase().includes(searchLower) ||
+      row.bounceColumn?.toLowerCase().includes(searchLower)
+    );
+  }, [rows, search]);
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-[1600px] px-3 sm:px-6 lg:px-8 py-4">
-        <h1 className="text-sm font-semibold text-gray-800 mb-3">Email Logs</h1>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-3">
-          <div>
-            <label className="block text-[11px] font-semibold text-gray-700 mb-1">Log Category</label>
-            <select
-              value={logCat}
-              onChange={(e) => {
-                setLogCat(e.target.value);
-                setPage(1);
-              }}
-              className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-xs outline-none focus:border-blue-500"
-            >
-              <option value="">All</option>
-              <option value="delivered">Delivered</option>
-              <option value="soft_bounce">Soft Bounce</option>
-              <option value="hard_bounce">Hard Bounce</option>
-              <option value="bounce">All Bounces</option>
-            </select>
-          </div>
-
-          <DateInputWithPicker
-            label="From Date"
-            value={fromDate}
-            onChange={(value) => {
-              setFromDate(value);
-              setPage(1);
-            }}
-            invalid={fromDateInvalid}
-          />
-
-          <DateInputWithPicker
-            label="To Date"
-            value={toDate}
-            onChange={(value) => {
-              setToDate(value);
-              setPage(1);
-            }}
-            invalid={toDateInvalid}
-          />
-
-          <div>
-            <label className="block text-[11px] font-semibold text-gray-700 mb-1">Search All</label>
-            <input
-              value={searchUi}
-              onChange={(e) => {
-                setSearchUi(e.target.value);
-                setPage(1);
-              }}
-              className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-xs outline-none focus:border-blue-500"
-              placeholder="subject, sender, recipient..."
-            />
-            <div className="mt-1 text-[10px] text-gray-500">
-              Tip: search is debounced (400ms) for smoother performance.
+    <div className="min-h-screen bg-[var(--page-bg)]" style={{borderRadius: "var(--page-radius)"}}>
+      {/* Header */}
+      <div className="bg-[var(--brand)] text-[var(--text-on-dark)]" style={{borderRadius: "var(--page-radius)"}}>
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Email Logs</h1>
+              <p className="mt-1 text-[var(--text-on-dark)]/80">
+                Track delivery status and bounce reports
+              </p>
             </div>
+            <button
+              onClick={handleRefresh}
+              disabled={loading || isRefreshing}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[var(--refresh-button)] text-[var(--text-on-dark)] hover:bg-[var(--foreground)] transition-colors disabled:opacity-50"
+              style={{borderRadius: "var(--page-radius)"}}
+            >
+              {(loading || isRefreshing) ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh
+            </button>
           </div>
         </div>
+      </div>
 
-        {dateError ? (
-          <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {dateError}
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {/* Filters */}
+        <div className="mb-6 border border-[var(--line-soft)] bg-[var(--surface)] p-4 shadow-[var(--shadow-soft)]" style={{borderRadius: "var(--page-radius)"}}>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-medium mb-1.5 text-[var(--text-soft)]">Log Category</label>
+              <select
+                value={logCat}
+                onChange={(e) => {
+                  setLogCat(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--text-strong)] outline-none focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)]"
+                style={{borderRadius: "var(--page-radius)"}}
+              >
+                <option value="">All</option>
+                <option value="delivered">Delivered</option>
+                <option value="soft_bounce">Soft Bounce</option>
+                <option value="hard_bounce">Hard Bounce</option>
+                <option value="bounce">All Bounces</option>
+              </select>
+            </div>
+
+            <DateInputWithPicker
+              label="From Date"
+              value={fromDate}
+              onChange={(value) => {
+                setFromDate(value);
+                setPage(1);
+              }}
+              invalid={fromDateInvalid}
+            />
+
+            <DateInputWithPicker
+              label="To Date"
+              value={toDate}
+              onChange={(value) => {
+                setToDate(value);
+                setPage(1);
+              }}
+              invalid={toDateInvalid}
+            />
+
+            <div>
+              <label className="block text-xs font-medium mb-1.5 text-[var(--text-soft)]">Search</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
+                <input
+                  value={searchUi}
+                  onChange={(e) => {
+                    setSearchUi(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full border border-[var(--line-soft)] bg-[var(--surface)] pl-10 pr-4 py-2.5 text-sm text-[var(--text-strong)] outline-none focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)]"
+                  style={{borderRadius: "var(--page-radius)"}}
+                  placeholder="subject, sender, recipient... (case-insensitive)"
+                />
+              </div>
+            </div>
           </div>
-        ) : null}
 
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-700">Show</span>
+          {dateError && (
+            <div className="mt-3 rounded-lg border border-[var(--danger)]/20 bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger)]">
+              {dateError}
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="mt-3 rounded-lg border border-[var(--danger)]/20 bg-[var(--danger-soft)] px-3 py-2 text-xs text-[var(--danger)]">
+              {errorMsg}
+            </div>
+          )}
+        </div>
+
+        {/* Controls Bar */}
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-soft)]">
+            <span>Show</span>
             <select
               value={perPage}
               onChange={(e) => {
                 setPerPage(Number(e.target.value));
                 setPage(1);
               }}
-              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs outline-none focus:border-blue-500"
+              className="border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-strong)] outline-none focus:border-[var(--line-strong)]"
+              style={{borderRadius: "var(--page-radius)"}}
             >
               {[10, 25, 50, 100].map((n) => (
                 <option key={n} value={n}>
@@ -472,97 +573,119 @@ export default function EmailLogsPage() {
                 </option>
               ))}
             </select>
-            <span className="text-xs text-gray-700">entries</span>
+            <span>entries</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="text-[11px] text-gray-600">
-              {loading ? "Loading..." : `Showing ${showingFrom} to ${showingTo} of ${total} entries`}
-            </div>
-
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[var(--text-soft)]">
+              Showing <span className="font-semibold text-[var(--text-strong)]">{showingFrom}</span> to{" "}
+              <span className="font-semibold text-[var(--text-strong)]">{showingTo}</span> of{" "}
+              <span className="font-semibold text-[var(--text-strong)]">{total.toLocaleString()}</span>
+            </span>
             <button
-              type="button"
               onClick={downloadLogs}
               disabled={downloading || loading || total === 0 || !!dateError}
-              className="inline-flex items-center gap-2 rounded border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand)] text-[var(--text-on-dark)] text-sm font-medium hover:bg-[var(--brand-strong)] transition-colors disabled:opacity-50"
+              style={{borderRadius: "var(--page-radius)"}}
             >
               <Download className="h-4 w-4" />
-              {downloading ? "Downloading..." : "Download Logs"}
+              {downloading ? "Downloading..." : "Export CSV"}
             </button>
           </div>
         </div>
 
-        {errorMsg ? (
-          <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {errorMsg}
-          </div>
-        ) : null}
-
-        <div className="rounded border border-gray-200 bg-white">
+        {/* Table */}
+        <div className="border border-[var(--line-soft)] bg-[var(--surface)] shadow-[var(--shadow-panel)] overflow-hidden" style={{borderRadius: "var(--page-radius)"}}>
           <div className="overflow-x-auto">
-            <table className="min-w-[1100px] w-full text-xs">
+            <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 bg-white">
-                  <Th>Status</Th>
-                  <Th>Sender / Bounce ID</Th>
-                  <Th>Recipient</Th>
-                  <Th>Time</Th>
-                  <Th>Subject</Th>
+                <tr className="border-b border-[var(--line-soft)] bg-[var(--surface-2)]">
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[var(--text-soft)] w-[12%] whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[var(--text-soft)] w-[20%] whitespace-nowrap">
+                    Sender
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[var(--text-soft)] w-[20%] whitespace-nowrap">
+                    Recipient
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[var(--text-soft)] w-[13%] whitespace-nowrap">
+                    Time
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-[var(--text-soft)] w-[25%]">
+                    Subject
+                  </th>
+                  
                 </tr>
               </thead>
 
-              <tbody>
-                {loading ? (
+              {(loading || isRefreshing) && rows.length === 0 ? (
+                <TableSkeleton />
+              ) : filteredRows.length === 0 ? (
+                <tbody>
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                      Loading...
+                    <td colSpan={6} className="px-4 py-16 text-center text-[var(--text-soft)]">
+                      <div className="flex flex-col items-center gap-2">
+                        <Mail className="h-12 w-12 text-[var(--line-soft)]" />
+                        <p>No logs found</p>
+                      </div>
                     </td>
                   </tr>
-                ) : rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                      No logs found
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((r, idx) => {
-                    const b = badge(r.bounceColumn);
+                </tbody>
+              ) : (
+                <tbody className="divide-y divide-[var(--line-soft)]">
+                  {filteredRows.map((r, idx) => {
+                    const status = getStatusConfig(r.bounceColumn);
+                    const StatusIcon = status.icon;
+                  
+                    
                     return (
-                      <tr key={`${r.timeLogged}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50">
-                        <Td>
-                          <span className={`inline-flex rounded px-2 py-0.5 text-[10px] font-semibold ${b.cls}`}>
-                            {b.label}
-                          </span>
-                        </Td>
-                        <Td className="text-gray-700">{r.orig}</Td>
-                        <Td className="text-gray-700">{r.rcpt}</Td>
-                        <Td className="text-gray-600">{r.timeLogged}</Td>
-                        <Td className="text-gray-700">{r.header_Subject}</Td>
-                      </tr>
+                      <React.Fragment key={`${r.timeLogged}-${idx}`}>
+                        <tr className="transition-colors hover:bg-[var(--surface-soft)]">
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border ${status.border} ${status.bg} ${status.color} px-2.5 py-1 text-xs font-semibold whitespace-nowrap`}>
+                              <StatusIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                              <span>{status.label}</span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-body)] font-mono text-xs ">
+                            {r.orig}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-body)] ">
+                            {r.rcpt}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-soft)] text-xs whitespace-nowrap">
+                            {r.timeLogged.split('+')[0]}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-body)] max-w-xs ">
+                            {r.header_Subject}
+                          </td>
+                          
+                        </tr>
+                        
+                      </React.Fragment>
                     );
-                  })
-                )}
-              </tbody>
+                  })}
+                </tbody>
+              )}
             </table>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-3 border-t border-gray-100">
-            <div className="text-[11px] text-gray-600">
-              Showing{" "}
-              <span className="font-semibold">
-                {alldata === 0 ? 0 : (serverPage - 1) * serverPerPage + 1}
-              </span>{" "}
-              to{" "}
-              <span className="font-semibold">{Math.min(serverPage * serverPerPage, alldata)}</span> of{" "}
-              <span className="font-semibold">{alldata.toLocaleString()}</span> entries
+          {/* Pagination */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-t border-[var(--line-soft)] bg-[var(--surface-2)] px-6 py-4 gap-3">
+            <div className="text-sm text-[var(--text-soft)]">
+              Showing <span className="font-semibold text-[var(--text-strong)]">{alldata === 0 ? 0 : (serverPage - 1) * serverPerPage + 1}</span> to{" "}
+              <span className="font-semibold text-[var(--text-strong)]">{Math.min(serverPage * serverPerPage, alldata)}</span> of{" "}
+              <span className="font-semibold text-[var(--text-strong)]">{alldata.toLocaleString()}</span> entries
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setPage(1)}
                 disabled={!canPrev}
-                className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] disabled:opacity-50"
+                style={{borderRadius: "var(--page-radius)"}}
                 title="First"
               >
                 <ChevronsLeft className="h-4 w-4" />
@@ -573,7 +696,8 @@ export default function EmailLogsPage() {
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={!canPrev}
-                className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] disabled:opacity-50"
+                style={{borderRadius: "var(--page-radius)"}}
                 title="Previous"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -583,7 +707,7 @@ export default function EmailLogsPage() {
               <div className="flex items-center gap-1">
                 {pageNumbers.map((p, i) =>
                   p === "..." ? (
-                    <span key={`dots-${i}`} className="px-2 text-[11px] text-gray-500">
+                    <span key={`dots-${i}`} className="px-2 text-xs text-[var(--text-faint)]">
                       ...
                     </span>
                   ) : (
@@ -592,11 +716,12 @@ export default function EmailLogsPage() {
                       type="button"
                       onClick={() => setPage(p)}
                       disabled={loading}
-                      className={`rounded border px-2 py-1 text-[11px] ${
-                        p === safePage
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-gray-300 bg-white hover:bg-gray-50"
-                      } disabled:opacity-50`}
+                      className={`px-3 py-2 text-xs font-medium transition-all disabled:opacity-50 ${
+                        p === safePage 
+                          ? 'bg-[var(--brand)] text-[var(--text-on-dark)]' 
+                          : 'border border-[var(--line-soft)] bg-[var(--surface)] text-[var(--text-body)] hover:bg-[var(--surface-soft)]'
+                      }`}
+                      style={{borderRadius: "var(--page-radius)"}}
                     >
                       {p}
                     </button>
@@ -608,7 +733,8 @@ export default function EmailLogsPage() {
                 type="button"
                 onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
                 disabled={!canNext}
-                className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] disabled:opacity-50"
+                style={{borderRadius: "var(--page-radius)"}}
                 title="Next"
               >
                 Next
@@ -619,15 +745,16 @@ export default function EmailLogsPage() {
                 type="button"
                 onClick={() => setPage(lastPage)}
                 disabled={!canNext}
-                className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1 border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] disabled:opacity-50"
+                style={{borderRadius: "var(--page-radius)"}}
                 title="Last"
               >
                 Last
                 <ChevronsRight className="h-4 w-4" />
               </button>
 
-              <div className="ml-1 flex items-center gap-1">
-                <span className="text-[11px] text-gray-600">Go</span>
+              <div className="flex items-center gap-1 ml-2">
+                <span className="text-xs text-[var(--text-soft)]">Go</span>
                 <input
                   value={pageInput}
                   onChange={(e) => setPageInput(e.target.value.replace(/[^\d]/g, ""))}
@@ -637,7 +764,8 @@ export default function EmailLogsPage() {
                       setPage(n);
                     }
                   }}
-                  className="w-14 rounded border border-gray-300 bg-white px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                  className="w-16 border border-[var(--line-soft)] bg-[var(--surface)] px-2 py-2 text-xs text-[var(--text-strong)] outline-none focus:border-[var(--line-strong)]"
+                  style={{borderRadius: "var(--page-radius)"}}
                   inputMode="numeric"
                 />
                 <button
@@ -647,27 +775,16 @@ export default function EmailLogsPage() {
                     setPage(n);
                   }}
                   disabled={loading}
-                  className="rounded border border-gray-300 bg-white px-2 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-50"
+                  className="border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] disabled:opacity-50"
+                  style={{borderRadius: "var(--page-radius)"}}
                 >
                   Go
                 </button>
               </div>
-
-              <span className="ml-2 text-[11px] text-gray-700">
-                Page {safePage} / {Math.max(1, lastPage)}
-              </span>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-2 text-left font-semibold text-gray-700 ${className}`}>{children}</th>;
-}
-
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2 ${className}`}>{children}</td>;
 }

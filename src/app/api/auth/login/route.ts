@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     // { success: true, token: "...", role: "admin"|"user" }
     if (!data?.success || !data?.token || !data?.role) {
       return NextResponse.json(
-        { success: false, message: data?.message || "Invalid login response from backend", data },
+        { success: false, message: data?.error || "Invalid login response from backend", data },
         { status: 401 }
       );
     }
@@ -45,7 +45,8 @@ export async function POST(req: Request) {
       token: data.token || data.access_token,
       role: data.role || data.user?.role,
       wheretogo: data.wheretogo,
-      success:data?.success
+      success:data?.success,
+      message:data?.message
     });
     // ✅ Set secure httpOnly cookies
     // const res = NextResponse.json({ success: true, role: data.role });

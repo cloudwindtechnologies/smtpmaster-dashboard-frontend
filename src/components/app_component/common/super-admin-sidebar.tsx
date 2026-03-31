@@ -311,7 +311,7 @@ export default function SuperAdminSidebar({ isMobile = false }: SidebarNavProps)
           ))}
         </ul>
       </nav>
-
+{/* 
       <div className="flex items-center justify-between border-t border-border p-2 text-xs text-muted-foreground">
         <button 
           onClick={toggleTheme} 
@@ -321,9 +321,9 @@ export default function SuperAdminSidebar({ isMobile = false }: SidebarNavProps)
           {theme === "dark" ? <Moon className="h-3 w-3" /> : <Sun className="h-3 w-3" />}
         </button>
         <span>GMT+5</span>
-      </div>
+      </div> */}
 
-      {!isMobile && (
+      {/* {!isMobile && (
         <div className="border-t border-border p-4">
           <div className="rounded-md bg-orange-500 p-6 text-white transition-all duration-300 hover:shadow-lg">
             <div className="mb-1 text-center text-xs font-medium">Current Plan</div>
@@ -341,7 +341,7 @@ export default function SuperAdminSidebar({ isMobile = false }: SidebarNavProps)
             </Link>
           </div>
         </div>
-      )}
+      )} */}
     </>
   );
 
@@ -352,11 +352,11 @@ export default function SuperAdminSidebar({ isMobile = false }: SidebarNavProps)
       <div className="flex items-center justify-center px-4 py-3 mt-3 h-16">
         <Link href="/">
           <Image
-            src="/smtplogo.jpg"
+            src="/LoginLogo.png"
             alt="SMTP Master"
             width={120}
             height={32}
-            className="w-auto object-contain"
+            className="w-[13rem] object-contain"
             priority
             unoptimized
           />

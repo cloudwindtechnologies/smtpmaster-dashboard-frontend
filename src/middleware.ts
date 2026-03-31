@@ -3,10 +3,9 @@ import type { NextRequest } from "next/server";
 
 type Role = "superadmin" | "user";
 
-// 🔐 Role-based routes
 const SUPERADMIN_ROUTES = [
   "/email-account-setting",
-  "/user-management",
+  "/user-manageseement",
   "/change-currency-exchange",
   "/email-package-config",
   "/notification",
@@ -19,12 +18,10 @@ const SHARED_ROUTES = [
   "/support-ticket",
 ];
 
-// ✅ Match helper
 function matchAny(pathname: string, routes: string[]) {
   return routes.some((r) => pathname === r || pathname.startsWith(`${r}/`));
 }
 
-// ✅ Edge-safe base64url JWT decode
 function decodeJwtPayload(token: string): any | null {
   try {
     const parts = token.split(".");
@@ -55,13 +52,35 @@ function isTokenExpired(token: string): boolean {
   return decoded.exp < currentTime;
 }
 
+function shouldSkipRedirectStore(pathname: string) {
+  return (
+    pathname === "/login" ||
+    pathname.startsWith("/signup") ||
+    pathname === "/unauthorized" ||
+    pathname === "/forgot-password"
+  );
+}
+
+function getStepPathFromWhereToGo(wheretogo?: string | null) {
+  const key = (wheretogo || "").toLowerCase().trim();
+
+  const stageToStep: Record<string, string> = {
+    statp2: "/signup/step-2",
+    statp3: "/signup/step-3",
+    statp4: "/signup/step-4",
+    statp5: "/signup/step-5",
+    statp7: "/signup/step-7",
+  };
+
+  return stageToStep[key] || null;
+}
+
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  // ✅ Public routes
   if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/signup") ||
+    pathname === "/login" ||
+    pathname === "/signup" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
     pathname.startsWith("/api") ||
@@ -70,25 +89,53 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // ✅ Read cookies
   const token = req.cookies.get("token")?.value;
   const role = req.cookies.get("role")?.value as Role | undefined;
- 
-  // ❌ Missing or expired token
+  const wheretogo = req.cookies.get("wheretogo")?.value;
+
   if (!token || !role || isTokenExpired(token)) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
 
-    // ✅ save current page so user returns here after login
-    url.searchParams.set("redirect", `${pathname}${search}`);
+    const requestedUrl = `${pathname}${search}`;
+
+    if (!shouldSkipRedirectStore(pathname)) {
+      url.searchParams.set("redirect", requestedUrl);
+    }
 
     const response = NextResponse.redirect(url);
     response.cookies.delete("token");
     response.cookies.delete("role");
+    response.cookies.delete("wheretogo");
     return response;
   }
 
-  // 🔐 Superadmin-only
+  const requiredStepPath = getStepPathFromWhereToGo(wheretogo);
+
+  if (requiredStepPath) {
+    const isExactRequiredStep = pathname === requiredStepPath;
+
+    if (!isExactRequiredStep) {
+      const url = req.nextUrl.clone();
+      url.pathname = requiredStepPath;
+      url.search = "";
+
+      const requestedUrl = `${pathname}${search}`;
+
+      if (!shouldSkipRedirectStore(pathname)) {
+        url.searchParams.set("redirect", requestedUrl);
+      } else {
+        const existingRedirect = req.nextUrl.searchParams.get("redirect");
+        if (existingRedirect) {
+          url.searchParams.set("redirect", existingRedirect);
+        }
+      }
+
+      return NextResponse.redirect(url);
+    }
+  }
+
   if (matchAny(pathname, SUPERADMIN_ROUTES)) {
     if (role !== "superadmin") {
       const url = req.nextUrl.clone();
@@ -98,7 +145,6 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  // 🔐 Shared routes
   if (matchAny(pathname, SHARED_ROUTES)) {
     if (role !== "superadmin" && role !== "user") {
       const url = req.nextUrl.clone();

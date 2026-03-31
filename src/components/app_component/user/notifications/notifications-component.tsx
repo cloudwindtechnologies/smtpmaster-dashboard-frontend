@@ -2,16 +2,24 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell, ShieldAlert, TriangleAlert, Loader2, ArrowRight } from "lucide-react";
-import { token } from "../../common/http";
+import {
+  Bell,
+  ShieldAlert,
+  TriangleAlert,
+  Loader2,
+  ArrowRight,
+} from "lucide-react";
+import { apiURL, token } from "../../common/http";
 
 type NotificationItem = {
   id: string;
+  backend_id?: number;
   type: "invalid_domain" | "spam_report";
   title: string;
   message: string;
   date: string | null;
   href: string;
+  is_unread: boolean;
 };
 
 type ApiResponse = {
@@ -80,6 +88,30 @@ export default function NotificationsComponent() {
     }
   };
 
+  const markSpamAsRead = async (backendId?: number) => {
+    if (!backendId) return;
+
+    try {
+      await fetch(`${apiURL}/api/v1/markSpamReportAsRead/${backendId}`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token()}`,
+        },
+      });
+
+      setRows((prev) =>
+        prev.map((item) =>
+          item.type === "spam_report" && item.backend_id === backendId
+            ? { ...item, is_unread: false }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Failed to mark spam report as read", error);
+    }
+  };
+
   useEffect(() => {
     loadNotifications();
   }, []);
@@ -94,8 +126,10 @@ export default function NotificationsComponent() {
       <div className="mx-auto max-w-5xl space-y-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Notifications</h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              Notifications
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               Invalid domain records and spam report alerts
             </p>
           </div>
@@ -103,30 +137,32 @@ export default function NotificationsComponent() {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setFilter("all")}
-              className={`px-4 py-2 rounded-lg border text-sm font-medium transition ${
+              className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
                 filter === "all"
-                  ? "bg-black text-white border-black"
-                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  ? "border-black bg-black text-white"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
               }`}
             >
               All
             </button>
+
             <button
               onClick={() => setFilter("invalid_domain")}
-              className={`px-4 py-2 rounded-lg border text-sm font-medium transition ${
+              className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
                 filter === "invalid_domain"
-                  ? "bg-black text-white border-black"
-                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  ? "border-black bg-black text-white"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
               }`}
             >
               Invalid Domains
             </button>
+
             <button
               onClick={() => setFilter("spam_report")}
-              className={`px-4 py-2 rounded-lg border text-sm font-medium transition ${
+              className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
                 filter === "spam_report"
-                  ? "bg-black text-white border-black"
-                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  ? "border-black bg-black text-white"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
               }`}
             >
               Spam Reports
@@ -151,7 +187,9 @@ export default function NotificationsComponent() {
               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
                 <Bell className="h-6 w-6 text-gray-500" />
               </div>
-              <h2 className="text-lg font-semibold text-gray-800">No notifications found</h2>
+              <h2 className="text-lg font-semibold text-gray-800">
+                No notifications found
+              </h2>
               <p className="mt-1 text-sm text-gray-500">
                 Everything looks good right now.
               </p>
@@ -163,7 +201,11 @@ export default function NotificationsComponent() {
               {filteredRows.map((item) => (
                 <div
                   key={item.id}
-                  className="flex flex-col gap-4 px-5 py-4 md:flex-row md:items-start md:justify-between"
+                  className={`flex flex-col gap-4 px-5 py-4 md:flex-row md:items-start md:justify-between ${
+                    item.type === "spam_report" && item.is_unread
+                      ? "bg-orange-50"
+                      : "bg-white"
+                  }`}
                 >
                   <div className="flex gap-3">
                     <div
@@ -182,7 +224,10 @@ export default function NotificationsComponent() {
 
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-sm font-semibold text-gray-900">{item.title}</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          {item.title}
+                        </h3>
+
                         <span
                           className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                             item.type === "invalid_domain"
@@ -190,18 +235,41 @@ export default function NotificationsComponent() {
                               : "bg-amber-100 text-amber-700"
                           }`}
                         >
-                          {item.type === "invalid_domain" ? "Invalid Domain" : "Spam Report"}
+                          {item.type === "invalid_domain"
+                            ? "Invalid Domain"
+                            : "Spam Report"}
                         </span>
+
+                        {item.type === "spam_report" && item.is_unread && (
+                          <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                            Unread
+                          </span>
+                        )}
+
+                        {item.type === "spam_report" && !item.is_unread && (
+                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+                            Read
+                          </span>
+                        )}
                       </div>
 
-                      <p className="mt-1 text-sm text-gray-600 break-words">{item.message}</p>
-                      <p className="mt-2 text-xs text-gray-400">{formatDate(item.date)}</p>
+                      <p className="mt-1 break-words text-sm text-gray-600">
+                        {item.message}
+                      </p>
+                      <p className="mt-2 text-xs text-gray-400">
+                        {formatDate(item.date)}
+                      </p>
                     </div>
                   </div>
 
                   <div className="md:pl-4">
                     <Link
                       href={item.href}
+                      onClick={() => {
+                        if (item.type === "spam_report") {
+                          markSpamAsRead(item.backend_id);
+                        }
+                      }}
                       className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
                       View
