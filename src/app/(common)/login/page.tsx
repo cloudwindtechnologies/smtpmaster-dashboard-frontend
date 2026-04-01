@@ -13,6 +13,8 @@ type LoginResponse = {
   wheretogo?: string;
   success?: boolean;
   message?: string;
+  gmail?: string;
+  
 };
 
 function getRedirectPathFromWhereToGo(wheretogo?: string | null): string {
@@ -127,9 +129,10 @@ function clearPendingRedirect() {
     
 
       localStorage.setItem("wheretogo", data.wheretogo || "");
+      localStorage.setItem("gmail", email || "");
 
       // ✅ Set cookies for middleware
-     
+      
       document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
       document.cookie = `wheretogo=${encodeURIComponent(String(data.wheretogo||''))}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
       document.cookie = `role=${encodeURIComponent(role)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
@@ -168,6 +171,8 @@ function clearPendingRedirect() {
       window.location.replace(fallbackRedirect);
      
     } catch (error) {
+      console.log(error);
+      
       showToast('error',"Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -181,7 +186,9 @@ function clearPendingRedirect() {
     }, [redirectFromUrl]);
 
   return (
+    
     <div className="h-screen w-screen overflow-hidden bg-[#f4f6fb] flex items-center justify-center">
+     date:26.4.1
       <div className="relative w-full h-full" style={{ transform: 'scale(0.8)', transformOrigin: 'center center' }}>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-[1180px] h-[110vh] max-h-[900px]">

@@ -119,7 +119,7 @@ export const useSignup = () => {
       if (step) {
         router.push(step.route);
       } else {
-        router.push("/dashboard");
+        router.push("/");
       }
     },
     [router]

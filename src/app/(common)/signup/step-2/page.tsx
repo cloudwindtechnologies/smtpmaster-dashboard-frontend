@@ -79,7 +79,7 @@ export default function VerifyEmailPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token()}`,
         },
-        body: JSON.stringify({ dest: email, otp, type: "email" }),
+        body: JSON.stringify({ dest: email, otp:otp, type: "email" }),
       });
 
       const data = await res.json();
@@ -141,14 +141,6 @@ export default function VerifyEmailPage() {
   return (
     <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
       <div className="mx-auto max-w-xl">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="mb-4 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </button>
 
         <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
           {/* Header with Logo */}

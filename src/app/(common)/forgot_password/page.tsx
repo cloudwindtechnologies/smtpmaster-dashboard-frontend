@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Mail, KeyRound, Lock, Loader2 } from "lucide-react";
 import Link from "next/link";
 
@@ -153,6 +153,7 @@ export default function ForgotPasswordPage() {
       setLoading(false);
     }
   }
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f4f6fb] px-4">

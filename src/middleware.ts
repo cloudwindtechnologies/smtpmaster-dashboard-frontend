@@ -29,8 +29,9 @@ function decodeJwtPayload(token: string): any | null {
 
     const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
 
-    const raw = atob(base64);
+    const raw = atob(padded);
 
     const json = decodeURIComponent(
       raw
@@ -45,8 +46,7 @@ function decodeJwtPayload(token: string): any | null {
   }
 }
 
-function isTokenExpired(token: string): boolean {
-  const decoded = decodeJwtPayload(token);
+function isTokenExpired(decoded: any): boolean {
   if (!decoded?.exp) return true;
   const currentTime = Math.floor(Date.now() / 1000);
   return decoded.exp < currentTime;
@@ -57,7 +57,7 @@ function shouldSkipRedirectStore(pathname: string) {
     pathname === "/login" ||
     pathname.startsWith("/signup") ||
     pathname === "/unauthorized" ||
-    pathname === "/forgot-password"
+    pathname.startsWith("/forgot_password")
   );
 }
 
@@ -75,8 +75,40 @@ function getStepPathFromWhereToGo(wheretogo?: string | null) {
   return stageToStep[key] || null;
 }
 
+function getSafeRole(decoded: any, cookieRole?: string): Role | undefined {
+  const roleFromToken = decoded?.role;
+  if (roleFromToken === "superadmin" || roleFromToken === "user") {
+    return roleFromToken;
+  }
+
+  if (cookieRole === "superadmin" || cookieRole === "user") {
+    return cookieRole;
+  }
+
+  return undefined;
+}
+
+function getSafeWhereToGo(decoded: any, cookieWhereToGo?: string): string | null {
+  const tokenWhereToGo = decoded?.wheretogo;
+
+  if (typeof tokenWhereToGo === "string" && tokenWhereToGo.trim()) {
+    return tokenWhereToGo;
+  }
+
+  if (typeof cookieWhereToGo === "string" && cookieWhereToGo.trim()) {
+    return cookieWhereToGo;
+  }
+
+  return null;
+}
+
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  // always allow forgot password without touching cookies
+  if (pathname.startsWith("/forgot_password")) {
+    return NextResponse.next();
+  }
 
   if (
     pathname === "/login" ||
@@ -90,10 +122,8 @@ export function middleware(req: NextRequest) {
   }
 
   const token = req.cookies.get("token")?.value;
-  const role = req.cookies.get("role")?.value as Role | undefined;
-  const wheretogo = req.cookies.get("wheretogo")?.value;
 
-  if (!token || !role || isTokenExpired(token)) {
+  if (!token) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -104,11 +134,33 @@ export function middleware(req: NextRequest) {
       url.searchParams.set("redirect", requestedUrl);
     }
 
-    const response = NextResponse.redirect(url);
-    response.cookies.delete("token");
-    response.cookies.delete("role");
-    response.cookies.delete("wheretogo");
-    return response;
+    return NextResponse.redirect(url);
+  }
+
+  const decoded = decodeJwtPayload(token);
+
+  if (!decoded || isTokenExpired(decoded)) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = "";
+
+    const requestedUrl = `${pathname}${search}`;
+
+    if (!shouldSkipRedirectStore(pathname)) {
+      url.searchParams.set("redirect", requestedUrl);
+    }
+
+    return NextResponse.redirect(url);
+  }
+
+  const role = getSafeRole(decoded, req.cookies.get("role")?.value);
+  const wheretogo = getSafeWhereToGo(decoded, req.cookies.get("wheretogo")?.value);
+
+  if (!role) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = "";
+    return NextResponse.redirect(url);
   }
 
   const requiredStepPath = getStepPathFromWhereToGo(wheretogo);
@@ -125,11 +177,6 @@ export function middleware(req: NextRequest) {
 
       if (!shouldSkipRedirectStore(pathname)) {
         url.searchParams.set("redirect", requestedUrl);
-      } else {
-        const existingRedirect = req.nextUrl.searchParams.get("redirect");
-        if (existingRedirect) {
-          url.searchParams.set("redirect", existingRedirect);
-        }
       }
 
       return NextResponse.redirect(url);

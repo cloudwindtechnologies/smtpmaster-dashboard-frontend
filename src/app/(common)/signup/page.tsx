@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { apiURL } from "@/components/app_component/common/http";
+import { showToast } from "@/components/app_component/common/toastHelper";
 
 
 export default function SignupPage() {
@@ -82,10 +83,10 @@ export default function SignupPage() {
       });
 
       const data = await res.json();
-
+      
       if (data.code !== 200) {
         setError(data.error?.email?.[0] || data.error || "Signup failed");
-        
+        showToast('error',data.error ||'invalid user') 
         return;
       }
 
@@ -123,10 +124,11 @@ export default function SignupPage() {
       statp4: "/signup/step-4", // Address
       statp5:"/signup/step-5", // Business info
       statp7: "/signup/step-7", // Mobile verification
-      dashboard: "/dashboard", // All complete
+      dashboard: "/", // All complete
     };
 
-    const route = routes[wheretogo] || "/dashboard";
+    const route = routes[wheretogo] || "/";
+  
     router.push(route);
   };
 
