@@ -6,6 +6,7 @@ import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { apiURL } from "@/components/app_component/common/http";
 
+
 export default function SignupPage() {
   const router = useRouter();
 
@@ -87,9 +88,7 @@ export default function SignupPage() {
         
         return;
       }
-      if(res.ok){
 
-      }
 
       // ✅ Store token and user data
       localStorage.setItem("gmail", formData.email.toLowerCase());
@@ -105,7 +104,7 @@ export default function SignupPage() {
       // 🍪 Set cookies for auth
       document.cookie = `role=${encodeURIComponent(String(data.role))}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
       document.cookie = `token=${encodeURIComponent(String(data.token))}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-      document.cookie = `wheretogo=${encodeURIComponent(data.wheretogo || "")}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+      document.cookie = `wheretogo=${encodeURIComponent(data.wheretogo || "")}; Path=/; Max-Age=${60 * 60 * 4}; SameSite=Lax`;
 
       // 🔀 Route to appropriate step
       routeByWhereTogo(data.wheretogo);

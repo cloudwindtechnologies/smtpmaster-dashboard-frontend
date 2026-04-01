@@ -1,36 +1,22 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, Mailbox, Building2, Loader2, Globe } from "lucide-react";
+import Image from "next/image";
+import { MapPin, Mailbox, Building2, Loader2, Globe, ChevronDown, Search, ArrowLeft } from "lucide-react";
+import { showToast } from "@/components/app_component/common/toastHelper";
 
-type Country = { id?: number | string; code?: string; name: string };
+type Country = { id?: number | string; code?: string; name: string; iso_code?: string; country_name?: string };
 
 type AddressPayload = {
   address: string;
   zipcode: string;
   city: string;
-  country: string; // store name (as you already do)
+  country: string;
 };
 
 export default function AddressStepPage() {
   const router = useRouter();
-
-  function setPendingRedirect(path: string | null) {
-  if (typeof window === "undefined") return;
-  if (!path) return;
-  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
-  if (path === "/login" || path.startsWith("/login?")) return;
-  if (path === "/signup" || path.startsWith("/signup")) return;
-
-  sessionStorage.setItem("pending_redirect", path);
-}
-
-function getPendingRedirect() {
-  if (typeof window === "undefined") return null;
-  return sessionStorage.getItem("pending_redirect");
-}
-
   const [form, setForm] = useState<AddressPayload>({
     address: "",
     zipcode: "",
@@ -39,12 +25,26 @@ function getPendingRedirect() {
   });
 
   const [countries, setCountries] = useState<Country[]>([]);
-  const [loadingCountries, setLoadingCountries] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [countryLoading, setCountryLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const [apiError, setApiError] = useState<string>("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  function setPendingRedirect(path: string | null) {
+    if (typeof window === "undefined") return;
+    if (!path) return;
+    if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+    if (path === "/login" || path.startsWith("/login?")) return;
+    if (path === "/signup" || path.startsWith("/signup")) return;
+
+    sessionStorage.setItem("pending_redirect", path);
+  }
+
+  function getPendingRedirect() {
+    if (typeof window === "undefined") return null;
+    return sessionStorage.getItem("pending_redirect");
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -55,85 +55,106 @@ function getPendingRedirect() {
     }
   }, []);
 
-  const setField = (k: keyof AddressPayload, v: string) => {
-    setForm((p) => ({ ...p, [k]: v }));
-    setErrors((p) => (p[k] ? { ...p, [k]: "" } : p));
-  };
-
-  const validate = () => {
-    const e: Record<string, string> = {};
-    if (!form.address.trim()) e.address = "Address is required";
-    if (!form.zipcode.trim()) e.zipcode = "Zipcode is required";
-    if (!form.city.trim()) e.city = "City is required";
-    if (!form.country.trim()) e.country = "Country is required";
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  // ✅ API 1: Fetch countries (from Next backend)
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
+    const fetchCountries = async () => {
       try {
-        setLoadingCountries(true);
-        setApiError("");
-        setMessage(null);
-
-        const res = await fetch("/api/auth/register/countries", {
+        setCountryLoading(true);
+        const response = await fetch("/api/auth/register/countries", {
           method: "GET",
-          headers: { Accept: "application/json" },
           cache: "no-store",
         });
 
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.message || "Failed to load countries");
-
-        // supports: {data:[]}, {countries:[]}, []
-        const list: Country[] = json?.data || json?.countries || json || [];
-        if (!cancelled) setCountries(Array.isArray(list) ? list : []);
-      } catch (err: any) {
-        if (!cancelled) setApiError(err?.message || "Failed to load countries");
+        const data = await response.json();
+        
+        const countryList = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.countries)
+          ? data.countries
+          : Array.isArray(data)
+          ? data
+          : [];
+        
+        setCountries(countryList);
+      } catch (error) {
+        console.error("Country fetch error:", error);
+        showToast("error", "❌ Failed to load countries");
       } finally {
-        if (!cancelled) setLoadingCountries(false);
+        setCountryLoading(false);
       }
-    })();
-
-    return () => {
-      cancelled = true;
     };
+
+    fetchCountries();
   }, []);
 
-  // ✅ API 2: Save address (from Next backend)
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+        setSearchTerm("");
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const setField = (k: keyof AddressPayload, v: string) => {
+    setForm((p) => ({ ...p, [k]: v }));
+  };
+
+  const handleCountrySelect = (country: Country) => {
+    const countryName = country.name || country.country_name || "";
+    setForm((p) => ({ ...p, country: countryName }));
+    setIsDropdownOpen(false);
+    setSearchTerm("");
+  };
+
+  const filteredCountries = countries.filter((country) => {
+    const countryName = (country.name || country.country_name || "").toLowerCase();
+    const countryCode = (country.code || country.iso_code || "").toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
+    return countryName.includes(searchLower) || countryCode.includes(searchLower);
+  });
+
+  const validate = () => {
+    if (!form.address.trim()) {
+      showToast("error", "Address is required");
+      return false;
+    }
+    if (!form.zipcode.trim()) {
+      showToast("error", "Zipcode is required");
+      return false;
+    }
+    if (!form.city.trim()) {
+      showToast("error", "City is required");
+      return false;
+    }
+    if (!form.country.trim()) {
+      showToast("error", "Country is required");
+      return false;
+    }
+    return true;
+  };
+
   const handleSaveContinue = async () => {
     if (!validate()) return;
 
     try {
-      setSaving(true);
-      setApiError("");
-      setMessage(null);
+      setLoading(true);
 
       const res = await fetch("/api/auth/register/update-profile", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
 
-      const json = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        // backend validation errors support
-        if (json?.errors && typeof json.errors === "object") {
-          const serverErrors: Record<string, string> = {};
-          Object.keys(json.errors).forEach((k) => {
-            serverErrors[k] = Array.isArray(json.errors[k]) ? json.errors[k][0] : String(json.errors[k]);
-          });
-          setErrors((prev) => ({ ...prev, ...serverErrors }));
-        }
-        throw new Error(json?.message || "Failed to save address");
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.message || "Something went wrong");
       }
 
-      setMessage({ type: "success", text: json?.message || "Address saved successfully!" });
+      showToast("success", data?.message || "Address saved successfully!");
       const pendingRedirect = getPendingRedirect();
 
       if (pendingRedirect) {
@@ -146,10 +167,9 @@ function getPendingRedirect() {
         router.replace("/signup/step-5");
       }
     } catch (err: any) {
-      setApiError(err?.message || "Failed to save address");
-      setMessage({ type: "error", text: err?.message || "Failed to save address" });
+      showToast("error", err?.message || "Failed to save address");
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
@@ -167,155 +187,205 @@ function getPendingRedirect() {
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-8">
-        {/* Header */}
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50">
-            <MapPin className="h-6 w-6 text-blue-600" />
+return (
+  <div className="min-h-screen bg-[#f4f6fb] p-3 pb-32 sm:p-4 md:p-6">
+    <div className="mx-auto max-w-xl">
+      <div className="overflow-visible rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+        {/* Header with Logo */}
+        <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+              <Image
+                src="/Logoicon.png"
+                alt="SMTPMaster Logo"
+                width={28}
+                height={28}
+                className="object-contain"
+              />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-white sm:text-xl">
+                Address Setup
+              </h1>
+              <p className="text-sm text-white/90">
+                Step 5 of 5: Add your business address
+              </p>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Add your address</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            This helps us configure your account properly.
-          </p>
         </div>
 
-        {/* Form */}
-        <div className="space-y-4">
-          {/* Address */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Address <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                value={form.address}
-                onChange={(e) => setField("address", e.target.value)}
-                placeholder="Street, area, etc."
-                className={`w-full rounded-lg border px-3 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.address ? "border-red-500" : "border-gray-300"
-                }`}
-                disabled={saving}
-              />
+        {/* Content */}
+        <div className="overflow-visible p-5 sm:p-6">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveContinue();
+            }}
+            className="space-y-5"
+          >
+            {/* Address */}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Address <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Street, area, etc."
+                  value={form.address}
+                  onChange={(e) => setField("address", e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10"
+                />
+              </div>
             </div>
-            {errors.address && <p className="mt-1 text-xs text-red-600">{errors.address}</p>}
-          </div>
 
-          {/* Zipcode */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Zipcode <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Mailbox className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                value={form.zipcode}
-                onChange={(e) => setField("zipcode", e.target.value)}
-                placeholder="Zip / Postal code"
-                className={`w-full rounded-lg border px-3 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.zipcode ? "border-red-500" : "border-gray-300"
-                }`}
-                disabled={saving}
-              />
+            {/* Zipcode */}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Zipcode <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Mailbox className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Zip / Postal code"
+                  value={form.zipcode}
+                  onChange={(e) => setField("zipcode", e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10"
+                />
+              </div>
             </div>
-            {errors.zipcode && <p className="mt-1 text-xs text-red-600">{errors.zipcode}</p>}
-          </div>
 
-          {/* City */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              City <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                value={form.city}
-                onChange={(e) => setField("city", e.target.value)}
-                placeholder="City"
-                className={`w-full rounded-lg border px-3 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.city ? "border-red-500" : "border-gray-300"
-                }`}
-                disabled={saving}
-              />
+            {/* City */}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                City <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  required
+                  placeholder="City"
+                  value={form.city}
+                  onChange={(e) => setField("city", e.target.value)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10"
+                />
+              </div>
             </div>
-            {errors.city && <p className="mt-1 text-xs text-red-600">{errors.city}</p>}
-          </div>
 
-          {/* Country */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Country <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <select
-                value={form.country}
-                onChange={(e) => setField("country", e.target.value)}
-                className={`w-full rounded-lg border px-3 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.country ? "border-red-500" : "border-gray-300"
-                }`}
-                disabled={saving || loadingCountries}
+            {/* Country Dropdown */}
+            <div ref={dropdownRef} className="relative z-[100]">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Country <span className="text-red-500">*</span>
+              </label>
+
+              <div className="relative">
+                <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <button
+                  type="button"
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-10 text-left text-sm transition hover:border-gray-300 focus:border-[#ff7800] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#ff7800]/10"
+                  disabled={countryLoading}
+                >
+                  {countryLoading ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-gray-500">Loading countries...</span>
+                    </div>
+                  ) : (
+                    <span
+                      className={
+                        form.country ? "text-gray-900" : "text-gray-400"
+                      }
+                    >
+                      {form.country || "Select your country"}
+                    </span>
+                  )}
+                </button>
+
+                <ChevronDown
+                  className={`absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-transform duration-200 ${
+                    isDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </div>
+
+              {/* Dropdown Menu */}
+              {isDropdownOpen && !countryLoading && (
+                <div className="absolute left-0 right-0 top-full mt-2 z-[9999] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+                  <div className="border-b border-gray-200 bg-gray-50 p-3">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search country..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-[#ff7800] focus:outline-none focus:ring-2 focus:ring-[#ff7800]/10"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <div className="max-h-64 overflow-y-auto">
+                    {filteredCountries.length > 0 ? (
+                      filteredCountries.map((country, index) => {
+                        const countryName =
+                          country.name || country.country_name || "";
+                        return (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => handleCountrySelect(country)}
+                            className="w-full border-b border-gray-100 px-4 py-2.5 text-left text-sm transition-colors hover:bg-orange-50 last:border-0"
+                          >
+                            <span className="text-gray-700">{countryName}</span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-4 py-8 text-center text-sm text-gray-500">
+                        No countries found
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handlePrevious}
+                disabled={loading}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
               >
-                <option value="">
-                  {loadingCountries ? "Loading countries..." : "Select country"}
-                </option>
-                {countries.map((c, i) => (
-                  <option key={String(c.id ?? i)} value={String(c.name)}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                <ArrowLeft className="h-4 w-4" />
+                Previous
+              </button>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:opacity-60"
+              >
+                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {loading ? "Updating..." : "Update & Continue"}
+              </button>
             </div>
-            {errors.country && <p className="mt-1 text-xs text-red-600">{errors.country}</p>}
-          </div>
-
-          {/* Messages */}
-          {apiError && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {apiError}
-            </div>
-          )}
-
-          {message && (
-            <div
-              className={[
-                "rounded-lg px-3 py-2 text-sm",
-                message.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600",
-              ].join(" ")}
-            >
-              {message.text}
-            </div>
-          )}
-
-          {/* Buttons */}
-          <div className="flex items-center justify-between pt-2">
-            <button
-              type="button"
-              onClick={handlePrevious}
-              disabled={saving}
-              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-            >
-              Previous
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSaveContinue}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition disabled:opacity-60"
-            >
-              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              {saving ? "Updating..." : "Update & Continue"}
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-6 text-center text-sm text-gray-500">
-          © {new Date().getFullYear()} SMTPMaster. All rights reserved.
+          </form>
         </div>
       </div>
+
+      <div className="mt-6 text-center text-sm text-gray-500">
+        © {new Date().getFullYear()} SMTPMaster. All rights reserved.
+      </div>
     </div>
-  );
+  </div>
+);
 }

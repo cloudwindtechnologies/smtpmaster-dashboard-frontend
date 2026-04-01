@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Loader2, RotateCcw, ArrowLeft } from "lucide-react";
+import {  Loader2, RotateCcw, ArrowLeft } from "lucide-react";
 import { token } from "@/components/app_component/common/http";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import Image from "next/image";
@@ -91,10 +91,9 @@ export default function VerifyEmailPage() {
       setMessage({ type: "success", text: data?.message || "Email verified successfully!" });
 
       const pendingRedirect = getPendingRedirect();
-
+       localStorage.setItem("wheretogo", "statp3");
+      document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800; SameSite=Lax";
       if (pendingRedirect) {
-        localStorage.setItem("wheretogo", "statp3");
-        document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800; SameSite=Lax";
         router.replace(`/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`);
       } else {
         router.replace("/signup/step-3");

@@ -24,6 +24,7 @@ import {
   ShoppingCart,
 } from 'lucide-react';
 import { token } from '../../common/http';
+import { showToast } from '../../common/toastHelper';
 
 interface UserData {
   id: string;
@@ -42,7 +43,7 @@ interface UserData {
   hmpiyt: string;
   hmcdh: string;
   sellonline: boolean;
-  status: 'Active' | 'Inactive' | 'Suspended';
+  status: boolean;
   emailNotificationEnabled: boolean;
   is_mobile_verify: boolean;
 }
@@ -62,7 +63,7 @@ export default function EditUserPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  
   const [countryCodes, setCountryCodes] = useState<CountryCode[]>([]);
   const [loadingCountries, setLoadingCountries] = useState(true);
 
@@ -83,7 +84,7 @@ export default function EditUserPage() {
     hmpiyt: '',
     hmcdh: '',
     sellonline: false,
-    status: 'Active',
+    status: true,
     emailNotificationEnabled: true,
     is_mobile_verify: false,
   });
@@ -217,8 +218,8 @@ export default function EditUserPage() {
           hmpiyt: data?.data?.hmpiyt || '',
           hmcdh: data?.data?.hmcdh || '',
           sellonline: data?.data?.sellonline === "0"?false:true || false,
-          status: data?.data?.status || 'Active',
-          emailNotificationEnabled: data?.data?.email_notification_enabled !== false,
+          status: data?.data?.status == 1, 
+          emailNotificationEnabled: data?.data?.notification_enabled !== false,
           is_mobile_verify: data?.data?.is_mobile_verify || false,
         };
 
@@ -281,7 +282,6 @@ export default function EditUserPage() {
 
     setSubmitting(true);
     setError('');
-    setSuccess('');
 
     try {
       const submitData = {
@@ -300,8 +300,9 @@ export default function EditUserPage() {
         hmpiyt: userData.hmpiyt,
         hmcdh: userData.hmcdh,
         sellonline: userData.sellonline,
-        is_mobile_verify:userData.is_mobile_verify
-        // status: userData.status,
+        is_mobile_verify:userData.is_mobile_verify,
+        status: userData.status,
+        notification_enabled:userData.emailNotificationEnabled
       };
       console.log('submit data',submitData);
       
@@ -326,8 +327,9 @@ export default function EditUserPage() {
         throw new Error(msg);
       }
 
-      setSuccess('User updated successfully!');
-
+      
+      
+      showToast('success','User updated successfully!')
       // ✅ After success, reset baseline so button becomes disabled again
       setOriginalUserData(userData);
     } catch (err) {
@@ -390,13 +392,6 @@ export default function EditUserPage() {
           <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50 flex items-start gap-3">
             <XCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
             <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-4 p-3 rounded-lg border border-green-200 bg-green-50 flex items-start gap-3">
-            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-            <p className="text-green-700 text-sm">{success}</p>
           </div>
         )}
 
@@ -717,13 +712,17 @@ export default function EditUserPage() {
                   <label className="block text-sm font-medium text-gray-700">Status</label>
                   <select
                     name="status"
-                    value={userData.status}
-                    onChange={handleInputChange}
+                    value={userData.status ? 'active' : 'suspended'}
+                    onChange={(e) =>
+                      setUserData((prev) => ({
+                        ...prev,
+                        status: e.target.value === 'active',
+                      }))
+                    }
                     className="w-full px-3.5 py-2.5 rounded-lg border border-gray-300 bg-gray-50 focus:bg-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all text-sm"
                   >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                    <option value="Suspended">Suspended</option>
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
                   </select>
                 </div>
 

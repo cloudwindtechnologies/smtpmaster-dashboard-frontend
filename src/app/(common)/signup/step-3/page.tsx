@@ -144,14 +144,11 @@ export default function ProfileSetupPage() {
 
       showToast("success", data?.message || "Profile updated successfully!");
       const pendingRedirect = getPendingRedirect();
-
-      if (pendingRedirect) {
         localStorage.setItem("wheretogo", "statp4");
         document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
+      if (pendingRedirect) {
         router.replace(`/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`);
       } else {
-        localStorage.setItem("wheretogo", "statp4");
-        document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
         router.replace("/signup/step-4");
       }
     } catch (err: any) {
