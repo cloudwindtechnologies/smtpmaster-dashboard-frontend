@@ -653,10 +653,10 @@ if (loading) {
 
             <p className="text-sm font-medium text-[var(--text-soft)]">
               Plan:{" "}
-              <span className="font-semibold text-[var(--text-strong)]">{packageName || "—"}</span>
+              <span className="font-semibold text-[var(--text-strong)]">{packageName || "No Active plane "}</span>
               {" | "}
               Expires:{" "}
-              <span className="font-semibold text-[var(--text-strong)]">{formatPlanDate(expiryDate)}</span>
+              <span className="font-semibold text-[var(--text-strong)]">{formatPlanDate(expiryDate) }</span>
             </p>
           </div>
         </div>
@@ -858,10 +858,10 @@ export default function DashboardPage() {
 
     const active = stats?.activeemailStats ?? null;
 
-    const delivered = toNum(active?.sum_delivered_emails) || sumDeliveredRows;
-    const bounce = toNum(active?.sum_bounce_mails) || sumBounceRows;
-    const hard = toNum(active?.sum_all_hard_bounce) || sumHardRows;
-    const soft = toNum(active?.sum_all_soft_bounce) || sumSoftRows;
+    const delivered = toNum(active?.sum_delivered_emails) || 0;
+    const bounce = toNum(active?.sum_bounce_mails) || 0;
+    const hard = toNum(active?.sum_all_hard_bounce) || 0;
+    const soft = toNum(active?.sum_all_soft_bounce) || 0;
     const total =
       (toNum(active?.total_sum) > 0 ? toNum(active?.total_sum) : 0) || delivered + bounce;
 

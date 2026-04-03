@@ -104,7 +104,7 @@ function clearPendingRedirect() {
       });
 
       const data = (await res.json()) as LoginResponse;
-      console.log('hellodata',data);
+      
       
       if (!res.ok || !data?.success || !data?.token ) {
         
@@ -115,27 +115,21 @@ function clearPendingRedirect() {
       }
 
       const role = data.role || "";
-      localStorage.setItem("role", role);
-      
-         if (role !== "superadmin") {
-        localStorage.setItem("user_token", data.token);
-        localStorage.setItem("token", data.token);
-        setTabSession("user");
-      } else {
-        localStorage.setItem("superadmin_token", data.token);
-        localStorage.setItem("token", data.token);
-        setSuperadminSession(data.token, role);
-      }
-    
 
-      localStorage.setItem("wheretogo", data.wheretogo || "");
-      localStorage.setItem("gmail", email || "");
+    if (role !== "superadmin") {
+      localStorage.setItem("user_token", data.token);
+      localStorage.setItem("token", data.token);
+      setTabSession("user");
+    } else {
+      localStorage.setItem("superadmin_token", data.token);
+      localStorage.setItem("token", data.token);
+      setSuperadminSession(data.token, role);
+    }
 
-      // ✅ Set cookies for middleware
-      
-      document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-      document.cookie = `wheretogo=${encodeURIComponent(String(data.wheretogo||''))}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-      document.cookie = `role=${encodeURIComponent(role)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+    localStorage.setItem("gmail", email || "");
+
+    // Only token cookie for middleware
+    document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
       
      
 
@@ -144,7 +138,7 @@ function clearPendingRedirect() {
       if (redirectFromUrl) {
         setPendingRedirect(redirectFromUrl);
       }
-
+      console.log('hellodata',data.wheretogo);
       const fallbackRedirect = getRedirectPathFromWhereToGo(data.wheretogo);
       const isUnfinished = fallbackRedirect.startsWith("/signup/");
       const pendingRedirect = getPendingRedirect();
@@ -188,8 +182,7 @@ function clearPendingRedirect() {
   return (
     
     <div className="h-screen w-screen overflow-hidden bg-[#f4f6fb] flex items-center justify-center">
-     date:26.4.1
-      <div className="relative w-full h-full" style={{ transform: 'scale(0.8)', transformOrigin: 'center center' }}>
+      <div className="relative w-[70%] h-full transform scale-[0.8] origin-center">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-[1180px] h-[110vh] max-h-[900px]">
             <div className="h-full w-full overflow-hidden rounded-[22px] bg-white shadow-[0_16px_50px_rgba(0,0,0,0.10)]">

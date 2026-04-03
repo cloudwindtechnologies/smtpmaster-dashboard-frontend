@@ -48,26 +48,7 @@ export async function POST(req: Request) {
       success:data?.success,
       message:data?.message
     });
-    // ✅ Set secure httpOnly cookies
-    // const res = NextResponse.json({ success: true, role: data.role });
 
-    // res.cookies.set("auth_token", data.token, {
-    //   httpOnly: true,
-    //   secure: process.env.NODE_ENV === "production",
-    //   sameSite: "lax",
-    //   path: "/",
-    //   maxAge: 60 * 60 * 24 * 7, // 7 days
-    // });
-
-    // res.cookies.set("role", data.role, {
-    //   httpOnly: true, // keep it safe too
-    //   secure: process.env.NODE_ENV === "production",
-    //   sameSite: "lax",
-    //   path: "/",
-    //   maxAge: 60 * 60 * 24 * 7,
-    // });
-
-    // return res;
 
   } catch (e: any) {
     return NextResponse.json({ success: false, message: e?.message || "Server error" }, { status: 500 });

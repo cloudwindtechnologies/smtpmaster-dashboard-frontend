@@ -262,73 +262,62 @@ export default function UsersListTable() {
     router.push(`list-users/add_user_package/${userId}`);
   }
 
-  const handleSettings = async (userId: number) => {
-    const superadminToken = localStorage.getItem("token") || localStorage.getItem("superadmin_token");
-    if (!superadminToken) {
-      router.push("/login");
-      return;
-    }
+const handleSettings = async (userId: number) => {
+  const superadminToken = localStorage.getItem("token");
+  if (!superadminToken) {
+    router.push("/login");
+    return;
+  }
 
-    setSuperLoginUserId(userId);
-    setErrorMessage(null);
+  setSuperLoginUserId(userId);
+  setErrorMessage(null);
 
-    try {
-      const res = await fetch(
-        `/api/user-management/list-users/superlogin_frwgmerggm?userId=${userId}`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${superadminToken}`,
-          },
-        }
-      );
-
-      if (res.status === 401) {
-        const errorData = await res.json();
-        setErrorMessage(errorData?.error || "Unauthorized access");
-        return;
+  try {
+    const res = await fetch(
+      `/api/user-management/list-users/superlogin_frwgmerggm?userId=${userId}`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${superadminToken}`,
+        },
       }
+    );
 
-      const data = await res.json();
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Superlogin failed");
+    if (!data.token) throw new Error("No token received");
 
-      if (!res.ok) {
-        throw new Error(data?.error || data?.message || "Superlogin failed");
-      }
+    const sessionPayload = {
+      token: data.token,
+      wheretogo: data.wheretogo || "dashboard",
+      filldata: data.filldata || {},
+      timestamp: Date.now(), // Prevent replay attacks
+    };
 
-      if (!data.token) {
-        throw new Error("No token received from server");
-      }
+    // ✅ PRODUCTION METHOD 1: BroadcastChannel (instant, no storage)
+    const bc = new BroadcastChannel('impersonate_channel');
+    bc.postMessage(sessionPayload);
+    bc.close(); // Immediate cleanup
 
-      localStorage.setItem("user_token", data.token);
-
-      const sessionData = {
-        type: "user",
-        wheretogo: data.wheretogo || "dashboard",
-        filldata: data.filldata || {},
+    // ✅ PRODUCTION METHOD 2: URL fallback (for Safari private mode, older browsers)
+    const encoded = btoa(JSON.stringify(sessionPayload));
+    const targetPath = (() => {
+      const map: Record<string, string> = {
+        statp2: "/", statp3: "/", statp4: "/", statp5: "/", statp7: "/", dashboard: "/"
       };
+      return map[data.wheretogo] || "/";
+    })();
+    
+    // Open new tab - it will try BC first, then URL fallback
+    window.open(`${window.location.origin}${targetPath}?impersonate=${encoded}`, "_blank");
 
-      const encodedData = btoa(JSON.stringify(sessionData));
-
-      const routeMap: Record<string, string> = {
-        statp2: "/",
-        statp3: "/",
-        statp4: "/",
-        statp5: "/",
-        statp7: "/",
-        dashboard: "/",
-      };
-
-      const targetPath = routeMap[data.wheretogo || "/"] || "/";
-      const newTabUrl = `${window.location.origin}${targetPath}?session=${encodedData}`;
-      window.open(newTabUrl, "_blank");
-    } catch (error: any) {
-      setErrorMessage(error.message || "Superlogin failed");
-    } finally {
-      setSuperLoginUserId(null);
-    }
-  };
-
+  } catch (error: any) {
+    setErrorMessage(error.message);
+  } finally {
+    setSuperLoginUserId(null);
+  }
+};
   return (
     <div className="w-full p-4 sm:p-6 bg-gray-50 min-h-screen">
       <div className="mb-6 sm:mb-8">

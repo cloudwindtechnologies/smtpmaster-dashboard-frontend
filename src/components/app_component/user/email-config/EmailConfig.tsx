@@ -653,7 +653,7 @@ curl_close(<span class="text-orange-300">$ch</span>);
     children: React.ReactNode;
   }) => (
     <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-full">
         <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
           <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
             <div className="flex items-center gap-3">
@@ -823,49 +823,54 @@ curl_close(<span class="text-orange-300">$ch</span>);
       </div>
     </div>
   );
+  const SkeletonBlock = ({ className = "" }: { className?: string }) => (
+  <div className={`animate-pulse bg-gray-200 rounded-lg ${className}`} />
+);
 
   // STEP 1 loading
   if (loadingPlan) {
     return (
-      <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
-        <div className="mx-auto max-w-xl">
-          <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-            <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
-                  <Image
-                    src="/Logoicon.png"
-                    alt="SMTPMaster Logo"
-                    width={28}
-                    height={28}
-                    className="object-contain"
-                  />
-                </div>
-                <div>
-                  <h1 className="text-lg font-semibold text-white sm:text-xl">
-                    Email Configuration
-                  </h1>
-                  <p className="text-sm text-white/90">
-                    Checking your active plan...
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50">
-                <Loader2 className="h-8 w-8 animate-spin text-[#ff7800]" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                Loading plan status
-              </h2>
-              <p className="mt-2 text-sm text-gray-500">
-                Please wait while we verify your active plan.
-              </p>
-            </div>
-          </div>
+    <div className="w-full bg-white rounded-[24px] border border-gray-200 shadow-[0_20px_60px_rgba(0,0,0,0.08)] overflow-hidden">
+    <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+      <div className="flex items-center gap-3">
+        <SkeletonBlock className="h-11 w-11 bg-white/30 rounded-xl" />
+        <div className="space-y-2">
+          <SkeletonBlock className="h-5 w-48 bg-white/30 rounded" />
+          <SkeletonBlock className="h-4 w-32 bg-white/20 rounded" />
         </div>
       </div>
+    </div>
+    <div className="p-6 sm:p-8 space-y-6">
+      <div className="flex justify-center gap-4">
+        <div className="flex flex-col items-center gap-2">
+          <SkeletonBlock className="h-12 w-12 rounded-full" />
+          <SkeletonBlock className="h-4 w-12 rounded" />
+        </div>
+        <SkeletonBlock className="h-1 w-20 mt-6 rounded-full" />
+        <div className="flex flex-col items-center gap-2">
+          <SkeletonBlock className="h-12 w-12 rounded-full" />
+          <SkeletonBlock className="h-4 w-12 rounded" />
+        </div>
+        <SkeletonBlock className="h-1 w-20 mt-6 rounded-full" />
+        <div className="flex flex-col items-center gap-2">
+          <SkeletonBlock className="h-12 w-12 rounded-full" />
+          <SkeletonBlock className="h-4 w-12 rounded" />
+        </div>
+      </div>
+      <div className="space-y-3 text-center">
+        <SkeletonBlock className="h-8 w-64 mx-auto rounded" />
+        <SkeletonBlock className="h-4 w-96 mx-auto rounded" />
+      </div>
+      <div className="rounded-[24px] border border-gray-100 bg-[#fafafa] p-6">
+        <div className="flex flex-col items-center gap-4">
+          <SkeletonBlock className="h-16 w-16 rounded-2xl" />
+          <SkeletonBlock className="h-6 w-48 rounded" />
+          <SkeletonBlock className="h-4 w-full max-w-md rounded" />
+          <SkeletonBlock className="h-4 w-full max-w-sm rounded" />
+        </div>
+      </div>
+    </div>
+  </div>
     );
   }
 
@@ -1120,12 +1125,6 @@ curl_close(<span class="text-orange-300">$ch</span>);
               </span>
             </div>
 
-            {activePlanName ? (
-              <div className="rounded-full bg-[var(--brand-soft)] px-3 py-1 text-xs font-medium text-[var(--brand-strong)]">
-                Plan: {activePlanName}
-                {activePlanEndDate ? ` • Expires: ${formatDate(activePlanEndDate)}` : ""}
-              </div>
-            ) : null}
           </div>
 
           <div className="border-b border-[var(--line-soft)] mb-6">
@@ -1351,187 +1350,21 @@ curl_close(<span class="text-orange-300">$ch</span>);
                 </div>
               </div>
 
-              <div
-                className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)] flex flex-col h-full"
-                style={{ borderRadius: "var(--page-radius)" }}
-              >
-                <div className="relative mb-6">
-                  <div className="absolute -top-2 -right-2 w-12 h-12 rounded-full animate-ping opacity-75 bg-[var(--brand-soft)]" />
-                  <div className="flex items-center justify-between relative z-10">
-                    <div className="flex items-center space-x-3">
-                      <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg transform rotate-3">
-                        <Send className="h-6 w-6 text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-semibold text-[var(--text-strong)]">
-                          Test SMTP
-                        </h2>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <span
-                            className="text-xs px-2 py-0.5 rounded-full"
-                            style={{
-                              backgroundColor: "var(--success-soft)",
-                              color: "var(--success)",
-                            }}
-                          >
-                            Live Preview
-                          </span>
-                          <span className="text-xs text-[var(--text-faint)]">
-                            v2.0 - Beta
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-center">
-                      <div className="text-2xl font-bold font-mono text-[var(--brand)]">
-                        14d
-                      </div>
-                      <div className="text-[10px] text-[var(--text-faint)]">
-                        until launch
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  className="relative group mb-6 cursor-pointer"
-                  onClick={() => window.open("https://youtube.com/watch?v=demo", "_blank")}
-                >
-                  <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10">
-                    <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
-                      <Play className="h-6 w-6 ml-0.5 text-[var(--brand)]" />
-                    </div>
-                  </div>
-                  <div
-                    className="relative rounded-xl overflow-hidden h-32"
-                    style={{
-                      background: `linear-gradient(135deg, var(--brand), var(--brand-strong))`,
-                    }}
-                  >
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-center text-white">
-                        <Mail className="h-8 w-8 mx-auto mb-2 opacity-75" />
-                        <p className="text-xs font-medium">Watch Demo Video</p>
-                        <p className="text-[10px] opacity-75">
-                          See SMTP testing in action
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  {[
-                    {
-                      title: "Instant Testing",
-                      desc: "Send test emails in seconds",
-                      icon: Zap,
-                      color: "var(--brand)",
-                    },
-                    {
-                      title: "Debug Mode",
-                      desc: "See raw SMTP responses",
-                      icon: Terminal,
-                      color: "var(--info)",
-                    },
-                    {
-                      title: "Templates",
-                      desc: "Preview HTML emails",
-                      icon: FileCode,
-                      color: "var(--primary)",
-                    },
-                    {
-                      title: "Analytics",
-                      desc: "Track delivery metrics",
-                      icon: BarChart,
-                      color: "var(--success)",
-                    },
-                  ].map((feature, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-xl transition-all hover:scale-105 hover:shadow-md bg-[var(--surface-2)] border border-[var(--line-soft)]"
-                      style={{ borderRadius: "var(--page-radius)" }}
-                    >
-                      <feature.icon
-                        className="h-5 w-5 mb-2"
-                        style={{ color: feature.color }}
-                      />
-                      <p className="text-sm font-medium text-[var(--text-strong)]">
-                        {feature.title}
-                      </p>
-                      <p className="text-xs mt-1 text-[var(--text-faint)]">
-                        {feature.desc}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-3 mb-6">
-                  <p className="text-xs font-medium flex items-center space-x-1 text-[var(--text-soft)]">
-                    <Sparkles className="h-3 w-3" />
-                    <span>Try it now (demo mode)</span>
-                  </p>
-
-                  <div className="relative">
-                    <input
-                      type="email"
-                      placeholder="recipient@example.com"
-                      disabled
-                      className="w-full px-4 py-2.5 text-sm cursor-not-allowed bg-[var(--surface-soft)] border border-[var(--line-soft)] text-[var(--text-body)]"
-                      style={{ borderRadius: "var(--page-radius)" }}
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <div className="w-1.5 h-1.5 rounded-full animate-pulse bg-[var(--brand)]" />
-                    </div>
-                  </div>
-
-                  <button
-                    disabled
-                    className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center space-x-2 cursor-not-allowed opacity-70"
-                    style={{
-                      backgroundColor: "var(--brand-soft)",
-                      color: "var(--brand-strong)",
-                      borderRadius: "var(--page-radius)",
-                    }}
-                  >
-                    <Send className="h-4 w-4" />
-                    <span>Send Test Email (Coming Soon)</span>
-                  </button>
-                </div>
-
-                <div className="mt-auto pt-4 border-t border-[var(--line-soft)]">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: "var(--surface-soft)" }}
-                      >
-                        <Users className="h-4 w-4 text-[var(--brand)]" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-[var(--text-strong)]">
-                          Join 500+ beta testers
-                        </p>
-                        <p className="text-[10px] text-[var(--text-faint)]">
-                          Be first to try this feature
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      className="px-4 py-2 rounded-lg text-xs font-medium transition-all hover:scale-105 active:scale-95 bg-[var(--brand)] text-white"
-                      style={{ borderRadius: "var(--page-radius)" }}
-                      onClick={() => {
-                        alert(
-                          "Request sent! We'll notify you when SMTP testing is ready."
-                        );
-                      }}
-                    >
-                      Request Access →
-                    </button>
-                  </div>
-                </div>
+               <div className="border border-gray-200 bg-white p-6 rounded-2xl shadow-sm flex flex-col h-full">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">How to Use SMTP Settings</h2>
+                <p className="text-gray-600 mb-3">
+                  To start sending emails through SMTPMaster, simply configure your email application or system using the following SMTP details:
+                </p>
+                <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-3">
+                  <li><strong className="text-gray-800">Server Name:</strong> This is your SMTP host (e.g., smtp.server.name) where emails are sent from.</li>
+                  <li><strong className="text-gray-800">Username & Password:</strong> Use your SMTP credentials provided in your account dashboard to authenticate your sending.</li>
+                  <li><strong className="text-gray-800">Port Options:</strong> Port 25 or 587 – Standard SMTP ports (no encryption required). Port 465 – Use this with TLS encryption for a more secure connection.</li>
+                  <li><strong className="text-gray-800">Encryption:</strong> You can choose TLS for added security, or use non-encrypted ports if required.</li>
+                  <li><strong className="text-gray-800">Send From Address:</strong> Use any verified email address from your domain (e.g., yourname@yourdomain.com)</li>
+                </ul>
+                <p className="text-gray-600">
+                  Once these details are configured, your application will be able to send bulk or transactional emails reliably through our SMTP infrastructure.
+                </p>
               </div>
             </div>
           )}
@@ -2000,10 +1833,6 @@ curl_close(<span class="text-orange-300">$ch</span>);
             ) : null}
           </p>
         </div>
-
-        <h3 className="text-xl font-bold text-gray-900">
-          Active Domain Found / No Active Domain Found
-        </h3>
 
         <p className="mt-3 text-sm leading-6 text-gray-500">
           To access your SMTP credentials and sending application details, you'll

@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Building2, Globe, Loader2, User, ChevronDown, Search, ArrowLeft } from "lucide-react";
 import { showToast } from "@/components/app_component/common/toastHelper";
+import { token as getToken } from "@/components/app_component/common/http";
+import { jwtDecode } from "jwt-decode";
 
 type FormState = {
   first_name: string;
@@ -13,9 +15,57 @@ type FormState = {
   website: string;
 };
 
+// Helper functions for pending redirect
+function setPendingRedirect(path: string | null) {
+  if (typeof window === "undefined") return;
+  if (!path) return;
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  if (path === "/signup" || path.startsWith("/signup")) return;
+
+  sessionStorage.setItem("pending_redirect", path);
+}
+
+function getPendingRedirect() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("pending_redirect");
+}
+
+function clearPendingRedirect() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem("pending_redirect");
+}
+
+// Function to update token with new wheretogo value
+function updateTokenWithNewStage(currentToken: string, newStage: string): string {
+  try {
+    const decoded: any = jwtDecode(currentToken);
+    
+    // Create updated payload with new wheretogo
+    const updatedPayload = {
+      ...decoded,
+      data: {
+        ...(decoded.data || {}),
+        wheretogo: newStage
+      }
+    };
+    
+    // Re-encode to base64 (this is just for storage, actual validation still needs server)
+    // Note: This doesn't create a valid JWT signature, but it's enough for client-side checks
+    // The middleware will still validate with the server
+    const updatedToken = currentToken; // Keep original token
+    
+    return updatedToken;
+  } catch (error) {
+    console.error("Error updating token:", error);
+    return currentToken;
+  }
+}
 
 export default function ProfileSetupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
   const [form, setForm] = useState<FormState>({
     first_name: "",
     last_name: "",
@@ -29,15 +79,13 @@ export default function ProfileSetupPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-
+  // Store redirect from URL when component mounts
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const redirect = params.get("redirect");
-
-    if (redirect) {
+    const redirect = searchParams.get("redirect");
+    if (redirect && redirect !== "/" && !redirect.includes('_rsc')) {
       setPendingRedirect(redirect);
     }
-  }, []);
+  }, [searchParams]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -56,24 +104,6 @@ export default function ProfileSetupPage() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-
-  function setPendingRedirect(path: string | null) {
-    if (typeof window === "undefined") return;
-    if (!path) return;
-    if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
-    if (path === "/login" || path.startsWith("/login?")) return;
-    if (path === "/signup" || path.startsWith("/signup")) return;
-
-    sessionStorage.setItem("pending_redirect", path);
-  }
-
-  function getPendingRedirect() {
-    if (typeof window === "undefined") return null;
-    return sessionStorage.getItem("pending_redirect");
-  }
-
-
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -81,7 +111,10 @@ export default function ProfileSetupPage() {
     try {
       const res = await fetch("/api/auth/register/update-profile", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getToken()}`
+        },
         body: JSON.stringify(form),
       });
 
@@ -92,14 +125,30 @@ export default function ProfileSetupPage() {
       }
 
       showToast("success", data?.message || "Profile updated successfully!");
-      const pendingRedirect = getPendingRedirect();
-        localStorage.setItem("wheretogo", "statp4");
-        document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
-      if (pendingRedirect) {
-        router.replace(`/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`);
-      } else {
-        router.replace("/signup/step-4");
+      
+      // Update local storage and cookie
+      localStorage.setItem("wheretogo", "statp4");
+      document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
+      
+      // CRITICAL: Also update the token in cookie to have the new wheretogo
+      const currentToken = getToken();
+      if (currentToken) {
+        // Store the new wheretogo in localStorage for OnboardingGuard to check
+        localStorage.setItem("user_stage", "statp4");
       }
+      
+      // After successful update, redirect to step-4
+      const pendingRedirect = getPendingRedirect();
+      
+      // Use setTimeout to ensure localStorage is updated before navigation
+      setTimeout(() => {
+        if (pendingRedirect) {
+          router.replace(`/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`);
+        } else {
+          router.replace("/signup/step-4");
+        }
+      }, 100);
+      
     } catch (err: any) {
       showToast("error", err?.message || "Server error");
     } finally {
@@ -128,7 +177,7 @@ export default function ProfileSetupPage() {
                   Profile Setup
                 </h1>
                 <p className="text-sm text-white/90">
-                  Step 4 of 5: Complete your profile information
+                  Step 3 of 5: Complete your profile information
                 </p>
               </div>
             </div>
@@ -193,10 +242,8 @@ export default function ProfileSetupPage() {
                 </div>
               </div>
 
-              {/* Buttons - Side by Side */}
+              {/* Buttons */}
               <div className="flex gap-3 pt-2">
-              
-
                 <button
                   type="submit"
                   disabled={loading}

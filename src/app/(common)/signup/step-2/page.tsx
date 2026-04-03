@@ -1,115 +1,163 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import {  Loader2, RotateCcw, ArrowLeft } from "lucide-react";
-import { token } from "@/components/app_component/common/http";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2, RotateCcw } from "lucide-react";
+import { token as getToken } from "@/components/app_component/common/http";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import Image from "next/image";
 
+// Helper functions for pending redirect
+function setPendingRedirect(path: string | null) {
+  if (typeof window === "undefined") return;
+  if (!path) return;
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  if (path === "/signup" || path.startsWith("/signup")) return;
+
+  sessionStorage.setItem("pending_redirect", path);
+}
+
+function getPendingRedirect() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("pending_redirect");
+}
+
+function clearPendingRedirect() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem("pending_redirect");
+}
+
+// Function to update user stage
+async function updateUserStage(newStage: string) {
+  try {
+    const response = await fetch("/api/auth/update-stage", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${getToken()}`
+      },
+      body: JSON.stringify({ wheretogo: newStage }),
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      // Update token if backend returns new one
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
+        return data.token;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Failed to update stage:", error);
+    return null;
+  }
+}
+
 export default function VerifyEmailPage() {
-  function setPendingRedirect(path: string | null) {
-    if (typeof window === "undefined") return;
-    if (!path) return;
-    if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
-    if (path === "/login" || path.startsWith("/login?")) return;
-    if (path === "/signup" || path.startsWith("/signup")) return;
-
-    sessionStorage.setItem("pending_redirect", path);
-  }
-
-  function getPendingRedirect() {
-    if (typeof window === "undefined") return null;
-    return sessionStorage.getItem("pending_redirect");
-  }
-  
   const router = useRouter();
-
+  const searchParams = useSearchParams();
+  
   const [email, setEmail] = useState<string>("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const maskedEmail = useMemo(() => {
     if (!email) return "";
     const [name, domain] = email.split("@");
     if (!domain) return email;
-    const safeName =
-      name.length <= 2
-        ? name[0] + "*"
-        : name.slice(0, 2) + "*".repeat(Math.min(6, name.length - 2));
+    const safeName = name.length <= 2 ? name[0] + "*" : name.slice(0, 2) + "*".repeat(Math.min(6, name.length - 2));
     return `${safeName}@${domain}`;
   }, [email]);
+
+  // Store redirect from URL when component mounts
+  useEffect(() => {
+    const redirect = searchParams.get("redirect");
+    if (redirect && redirect !== "/" && !redirect.includes('_rsc')) {
+      setPendingRedirect(redirect);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const stored = localStorage.getItem("gmail") || "";
     setEmail(stored || "example@gmail.com");
   }, []);
-  
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const redirect = params.get("redirect");
 
-    if (redirect) {
-      setPendingRedirect(redirect);
-    }
-  }, []);
-
-  // Cooldown timer effect
   useEffect(() => {
     if (cooldown > 0) {
-      const timer = setTimeout(() => {
-        setCooldown(cooldown - 1);
-      }, 1000);
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
       return () => clearTimeout(timer);
     }
   }, [cooldown]);
 
+  useEffect(() => {
+    if (email) handleResend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMessage(null);
 
     try {
       const res = await fetch("/api/auth/register/verify-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token()}`,
+          Authorization: `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ dest: email, otp:otp, type: "email" }),
+        body: JSON.stringify({ dest: email, otp, type: "email" }),
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Invalid OTP");
 
-      if (!res.ok) {
-        throw new Error(data?.message || "Invalid OTP");
+      showToast("success", data?.message || "Email verified!");
+
+      // Update token if backend returns new one from verification
+      let updatedToken = data.token;
+      if (updatedToken) {
+        document.cookie = `token=${encodeURIComponent(updatedToken)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", updatedToken);
       }
-      showToast("success", data?.message || "Email verified successfully!");
-      setMessage({ type: "success", text: data?.message || "Email verified successfully!" });
 
-      const pendingRedirect = getPendingRedirect();
-       localStorage.setItem("wheretogo", "statp3");
+      // IMPORTANT: Update user stage to statp3
+      const newToken = await updateUserStage("statp3");
+      
+      if (newToken) {
+        updatedToken = newToken;
+      }
+
+      // Also update local storage
+      localStorage.setItem("wheretogo", "statp3");
       document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800; SameSite=Lax";
-      if (pendingRedirect) {
-        router.replace(`/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`);
-      } else {
-        router.replace("/signup/step-3");
-      }
+
+      // After verification, preserve redirect to next step
+      const pendingRedirect = getPendingRedirect();
+      
+      // Small delay to ensure token is updated
+      setTimeout(() => {
+        if (pendingRedirect) {
+          // Pass the pending redirect to step-3
+          router.replace(`/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`);
+        } else {
+          router.replace("/signup/step-3");
+        }
+      }, 100);
+      
     } catch (err: any) {
-      showToast('error', err?.message || "Verification failed");
-    } finally {
+      showToast("error", err?.message || "Verification failed");
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
     if (cooldown > 0) return;
-    
     setResendLoading(true);
-    setMessage(null);
 
     try {
       const res = await fetch("/api/auth/register/send-otp", {
@@ -119,68 +167,43 @@ export default function VerifyEmailPage() {
       });
 
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.message || "Failed to resend OTP");
-      }
-      showToast('success', data?.message || "Verification code resent successfully!");
-      setCooldown(60); // Set 60 second cooldown
+      if (!res.ok) throw new Error(data?.message || "Failed to resend");
+      
+      showToast("success", "Code resent!");
+      setCooldown(60);
     } catch (err: any) {
-      showToast('error', err?.message || "Resend failed");
+      showToast("error", err?.message || "Resend failed");
     } finally {
       setResendLoading(false);
     }
   };
 
-  // auto-resend after email is loaded
-  useEffect(() => {
-    if (email) handleResend();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email]);
-
   return (
+    
     <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
       <div className="mx-auto max-w-xl">
-
         <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {/* Header with Logo */}
           <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
             <div className="flex items-center gap-3">
-              {/* Logo */}
-             <div className="flex h-15 w-15  items-center justify-center rounded-xl bg-white">
-                <Image 
-                    src="/Logoicon.png" 
-                    alt="Description" 
-                    width={40} 
-                    height={20} 
-                  />
+              <div className="flex h-15 w-15 items-center justify-center rounded-xl bg-white">
+                <Image src="/Logoicon.png" alt="Logo" width={40} height={20} />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-white sm:text-xl">
-                  Verify Email
-                </h1>
-                <p className="text-sm text-white/90">
-                  Complete this step to continue your account setup
-                </p>
+                <h1 className="text-lg font-semibold text-white sm:text-xl">Verify Email</h1>
+                <p className="text-sm text-white/90">Complete this step to continue</p>
               </div>
             </div>
           </div>
 
-          {/* Content */}
           <div className="p-5 sm:p-6">
             <div className="mb-6 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-4">
-              <p className="text-sm leading-relaxed text-gray-700">
-                We sent a verification code to{" "}
-                <span className="font-semibold text-gray-900">{maskedEmail}</span>.
+              <p className="text-sm text-gray-700">
+                We sent a code to <span className="font-semibold text-gray-900">{maskedEmail}</span>
               </p>
               <p className="mt-2 text-sm text-gray-600">
-                Want to change email?{" "}
-                <button
-                  type="button"
-                  onClick={() => router.push("/signup")}
-                  className="font-semibold text-[#ff7800] hover:underline"
-                >
-                  Edit email
+                Wrong email?{" "}
+                <button onClick={() => router.push("/signup")} className="font-semibold text-[#ff7800] hover:underline">
+                  Change it
                 </button>
               </p>
             </div>
@@ -190,7 +213,6 @@ export default function VerifyEmailPage() {
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   OTP Code <span className="text-red-500">*</span>
                 </label>
-
                 <input
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -199,37 +221,26 @@ export default function VerifyEmailPage() {
                   required
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-sm outline-none focus:border-[#ff7800] focus:ring-4 focus:ring-[#ff7800]/10"
                 />
-
-                <p className="mt-1.5 text-xs text-gray-500">
-                  Check your inbox or spam folder. It may take a few seconds.
-                </p>
+                <p className="mt-1.5 text-xs text-gray-500">Check inbox or spam folder</p>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
                 <button
                   type="button"
                   onClick={handleResend}
-                  disabled={resendLoading || !email || cooldown > 0}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={resendLoading || cooldown > 0}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
-                  {resendLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RotateCcw className="h-4 w-4" />
-                  )}
-                  {resendLoading 
-                    ? "Resending..." 
-                    : cooldown > 0 
-                    ? `Resend code (${cooldown}s)` 
-                    : "Resend code"}
+                  {resendLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  {cooldown > 0 ? `Resend (${cooldown}s)` : "Resend code"}
                 </button>
 
                 <button
                   type="submit"
-                  disabled={loading || !email}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:opacity-60"
+                  disabled={loading}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white hover:bg-[#e66c00] disabled:opacity-60"
                 >
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? "Verifying..." : "Verify & Continue"}

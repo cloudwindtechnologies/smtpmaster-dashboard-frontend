@@ -1,209 +1,138 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { jwtVerify } from "jose";
 
-type Role = "superadmin" | "user";
+type OnboardingStep = "statp2" | "statp3" | "statp4" | "statp5" | "statp7" | "dashboard";
 
-const SUPERADMIN_ROUTES = [
-  "/email-account-setting",
-  "/user-manageseement",
-  "/change-currency-exchange",
-  "/email-package-config",
-  "/notification",
+const PUBLIC_ROUTES = [
+  "/login",
+  "/signup",
+  "/forgot_password",
+  "/unauthorized",
+  "/api/auth/login",
+  "/api/auth/register",
+  "/_next",
+  "/favicon.ico",
+  "/images",
+  "/Logoicon.png"
 ];
 
-const SHARED_ROUTES = [
-  "/",
-  "/email-logs",
-  "/my-account",
-  "/support-ticket",
-];
+const STEP_SEQUENCE: OnboardingStep[] = ["statp2", "statp3", "statp4", "statp5", "statp7", "dashboard"];
 
-function matchAny(pathname: string, routes: string[]) {
-  return routes.some((r) => pathname === r || pathname.startsWith(`${r}/`));
-}
+const STEP_TO_ROUTE: Record<OnboardingStep, string> = {
+  statp2: "/signup/step-2",
+  statp3: "/signup/step-3",
+  statp4: "/signup/step-4",
+  statp5: "/signup/step-5",
+  statp7: "/signup/step-7",
+  dashboard: "/"
+};
 
-function decodeJwtPayload(token: string): any | null {
+const STEP_ROUTE_MAP: Record<string, number> = {
+  "/signup/step-2": 0,
+  "/signup/step-3": 1,
+  "/signup/step-4": 2,
+  "/signup/step-5": 3,
+  "/signup/step-7": 4,
+  "/": 5
+};
+
+async function verifyJWT(token: string): Promise<any | null> {
   try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-
-    const base64Url = parts[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
-
-    const raw = atob(padded);
-
-    const json = decodeURIComponent(
-      raw
-        .split("")
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join("")
-    );
-
-    return JSON.parse(json);
-  } catch {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET_KEY || "");
+    if (!secret.length) {
+      console.error("JWT_SECRET_KEY not set");
+      return null;
+    }
+    const { payload } = await jwtVerify(token, secret);
+    return payload;
+  } catch (error) {
     return null;
   }
 }
 
-function isTokenExpired(decoded: any): boolean {
-  if (!decoded?.exp) return true;
-  const currentTime = Math.floor(Date.now() / 1000);
-  return decoded.exp < currentTime;
-}
+export async function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
 
-function shouldSkipRedirectStore(pathname: string) {
-  return (
-    pathname === "/login" ||
-    pathname.startsWith("/signup") ||
-    pathname === "/unauthorized" ||
-    pathname.startsWith("/forgot_password")
-  );
-}
-
-function getStepPathFromWhereToGo(wheretogo?: string | null) {
-  const key = (wheretogo || "").toLowerCase().trim();
-
-  const stageToStep: Record<string, string> = {
-    statp2: "/signup/step-2",
-    statp3: "/signup/step-3",
-    statp4: "/signup/step-4",
-    statp5: "/signup/step-5",
-    statp7: "/signup/step-7",
-  };
-
-  return stageToStep[key] || null;
-}
-
-function getSafeRole(decoded: any, cookieRole?: string): Role | undefined {
-  const roleFromToken = decoded?.role;
-  if (roleFromToken === "superadmin" || roleFromToken === "user") {
-    return roleFromToken;
-  }
-
-  if (cookieRole === "superadmin" || cookieRole === "user") {
-    return cookieRole;
-  }
-
-  return undefined;
-}
-
-function getSafeWhereToGo(decoded: any, cookieWhereToGo?: string): string | null {
-  const tokenWhereToGo = decoded?.wheretogo;
-
-  if (typeof tokenWhereToGo === "string" && tokenWhereToGo.trim()) {
-    return tokenWhereToGo;
-  }
-
-  if (typeof cookieWhereToGo === "string" && cookieWhereToGo.trim()) {
-    return cookieWhereToGo;
-  }
-
-  return null;
-}
-
-export function middleware(req: NextRequest) {
-  const { pathname, search } = req.nextUrl;
-
-  // always allow forgot password without touching cookies
-  if (pathname.startsWith("/forgot_password")) {
+  // Allow public assets and API routes
+  if (PUBLIC_ROUTES.some(route => pathname.startsWith(route) || pathname === route)) {
     return NextResponse.next();
   }
 
-  if (
-    pathname === "/login" ||
-    pathname === "/signup" ||
-    pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico" ||
-    pathname.startsWith("/api") ||
-    pathname.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)$/)
-  ) {
-    return NextResponse.next();
-  }
+  // Extract token from cookies only (secure)
+  const token = request.cookies.get("token")?.value;
 
-  const token = req.cookies.get("token")?.value;
-
+  // No token = redirect to login
   if (!token) {
-    const url = req.nextUrl.clone();
+    const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-
-    const requestedUrl = `${pathname}${search}`;
-
-    if (!shouldSkipRedirectStore(pathname)) {
-      url.searchParams.set("redirect", requestedUrl);
+    if (pathname !== "/") {
+      url.searchParams.set("redirect", `${pathname}${search}`);
     }
-
     return NextResponse.redirect(url);
   }
 
-  const decoded = decodeJwtPayload(token);
-
-  if (!decoded || isTokenExpired(decoded)) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.search = "";
-
-    const requestedUrl = `${pathname}${search}`;
-
-    if (!shouldSkipRedirectStore(pathname)) {
-      url.searchParams.set("redirect", requestedUrl);
-    }
-
-    return NextResponse.redirect(url);
+  // Verify JWT signature (tamper-proof)
+  const decoded = await verifyJWT(token);
+  
+  if (!decoded) {
+    // Tampered or expired token
+    const response = NextResponse.redirect(new URL("/login?error=invalid_session", request.url));
+    response.cookies.delete("token");
+    response.cookies.delete("wheretogo");
+    return response;
   }
 
-  const role = getSafeRole(decoded, req.cookies.get("role")?.value);
-  const wheretogo = getSafeWhereToGo(decoded, req.cookies.get("wheretogo")?.value);
+  const roleId = decoded?.data?.login_user_role_id;
+  const wheretogo = (decoded?.data?.wheretogo as OnboardingStep) || "statp2";
 
-  if (!role) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.search = "";
-    return NextResponse.redirect(url);
+  // Superadmin (role_id: 1) bypasses onboarding
+  if (roleId === 1) {
+    return NextResponse.next();
   }
 
-  const requiredStepPath = getStepPathFromWhereToGo(wheretogo);
-
-  if (requiredStepPath) {
-    const isExactRequiredStep = pathname === requiredStepPath;
-
-    if (!isExactRequiredStep) {
-      const url = req.nextUrl.clone();
-      url.pathname = requiredStepPath;
-      url.search = "";
-
-      const requestedUrl = `${pathname}${search}`;
-
-      if (!shouldSkipRedirectStore(pathname)) {
-        url.searchParams.set("redirect", requestedUrl);
-      }
-
-      return NextResponse.redirect(url);
+  // Check if accessing onboarding step
+  const currentStepIndex = STEP_SEQUENCE.indexOf(wheretogo);
+  
+  // Check if accessing root/dashboard
+  if (pathname === "/" || pathname.startsWith("/?")) {
+    if (wheretogo !== "dashboard") {
+      // Incomplete onboarding, redirect to current step
+      return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
     }
+    return NextResponse.next();
   }
 
-  if (matchAny(pathname, SUPERADMIN_ROUTES)) {
-    if (role !== "superadmin") {
-      const url = req.nextUrl.clone();
-      url.pathname = "/unauthorized";
-      url.search = "";
-      return NextResponse.redirect(url);
+  // Check if accessing any /signup/step-X
+  const stepMatch = pathname.match(/\/signup\/step-(\d+)/);
+  if (stepMatch) {
+    const requestedStep = parseInt(stepMatch[1]);
+    const stepKey = `statp${requestedStep}` as OnboardingStep;
+    const requestedIndex = STEP_SEQUENCE.indexOf(stepKey);
+
+    // Invalid step number
+    if (requestedIndex === -1) {
+      return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
     }
+
+    // Trying to access future step (e.g., on step 2, trying to go to step 4)
+    if (requestedIndex > currentStepIndex) {
+      return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
+    }
+
+    // Allow access (current or previous step)
+    return NextResponse.next();
   }
 
-  if (matchAny(pathname, SHARED_ROUTES)) {
-    if (role !== "superadmin" && role !== "user") {
-      const url = req.nextUrl.clone();
-      url.pathname = "/unauthorized";
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
+  // Accessing other protected routes while onboarding incomplete
+  if (wheretogo !== "dashboard") {
+    return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
 };
