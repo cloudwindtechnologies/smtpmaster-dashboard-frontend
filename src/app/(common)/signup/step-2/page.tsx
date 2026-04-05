@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, RotateCcw } from "lucide-react";
 import { token as getToken } from "@/components/app_component/common/http";
@@ -33,15 +33,16 @@ async function updateUserStage(newStage: string) {
   try {
     const response = await fetch("/api/auth/update-stage", {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getToken()}`
+        Authorization: `Bearer ${getToken()}`,
       },
       body: JSON.stringify({ wheretogo: newStage }),
     });
-    
+
     if (response.ok) {
       const data = await response.json();
+
       // Update token if backend returns new one
       if (data.token) {
         document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
@@ -49,6 +50,7 @@ async function updateUserStage(newStage: string) {
         return data.token;
       }
     }
+
     return null;
   } catch (error) {
     console.error("Failed to update stage:", error);
@@ -57,9 +59,17 @@ async function updateUserStage(newStage: string) {
 }
 
 export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f4f6fb]" />}>
+      <VerifyEmailPageInner />
+    </Suspense>
+  );
+}
+
+function VerifyEmailPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   const [email, setEmail] = useState<string>("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
@@ -70,14 +80,17 @@ export default function VerifyEmailPage() {
     if (!email) return "";
     const [name, domain] = email.split("@");
     if (!domain) return email;
-    const safeName = name.length <= 2 ? name[0] + "*" : name.slice(0, 2) + "*".repeat(Math.min(6, name.length - 2));
+    const safeName =
+      name.length <= 2
+        ? name[0] + "*"
+        : name.slice(0, 2) + "*".repeat(Math.min(6, name.length - 2));
     return `${safeName}@${domain}`;
   }, [email]);
 
-  // Store redirect from URL when component mounts
+ 
   useEffect(() => {
     const redirect = searchParams.get("redirect");
-    if (redirect && redirect !== "/" && !redirect.includes('_rsc')) {
+    if (redirect && redirect !== "/" && !redirect.includes("_rsc")) {
       setPendingRedirect(redirect);
     }
   }, [searchParams]);
@@ -127,7 +140,7 @@ export default function VerifyEmailPage() {
 
       // IMPORTANT: Update user stage to statp3
       const newToken = await updateUserStage("statp3");
-      
+
       if (newToken) {
         updatedToken = newToken;
       }
@@ -138,17 +151,14 @@ export default function VerifyEmailPage() {
 
       // After verification, preserve redirect to next step
       const pendingRedirect = getPendingRedirect();
-      
-      // Small delay to ensure token is updated
+
       setTimeout(() => {
         if (pendingRedirect) {
-          // Pass the pending redirect to step-3
           router.replace(`/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`);
         } else {
           router.replace("/signup/step-3");
         }
       }, 100);
-      
     } catch (err: any) {
       showToast("error", err?.message || "Verification failed");
       setLoading(false);
@@ -168,7 +178,7 @@ export default function VerifyEmailPage() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Failed to resend");
-      
+
       showToast("success", "Code resent!");
       setCooldown(60);
     } catch (err: any) {
@@ -179,7 +189,6 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    
     <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
       <div className="mx-auto max-w-xl">
         <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
@@ -202,7 +211,10 @@ export default function VerifyEmailPage() {
               </p>
               <p className="mt-2 text-sm text-gray-600">
                 Wrong email?{" "}
-                <button onClick={() => router.push("/signup")} className="font-semibold text-[#ff7800] hover:underline">
+                <button
+                  onClick={() => router.push("/signup")}
+                  className="font-semibold text-[#ff7800] hover:underline"
+                >
                   Change it
                 </button>
               </p>
@@ -233,7 +245,11 @@ export default function VerifyEmailPage() {
                   disabled={resendLoading || cooldown > 0}
                   className="inline-flex h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
-                  {resendLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  {resendLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4" />
+                  )}
                   {cooldown > 0 ? `Resend (${cooldown}s)` : "Resend code"}
                 </button>
 

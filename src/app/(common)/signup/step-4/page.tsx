@@ -1,13 +1,28 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { Suspense, useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { MapPin, Mailbox, Building2, Loader2, Globe, ChevronDown, Search, ArrowLeft } from "lucide-react";
+import {
+  MapPin,
+  Mailbox,
+  Building2,
+  Loader2,
+  Globe,
+  ChevronDown,
+  Search,
+  ArrowLeft,
+} from "lucide-react";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { token as getToken } from "@/components/app_component/common/http";
 
-type Country = { id?: number | string; code?: string; name: string; iso_code?: string; country_name?: string };
+type Country = {
+  id?: number | string;
+  code?: string;
+  name: string;
+  iso_code?: string;
+  country_name?: string;
+};
 
 type AddressPayload = {
   address: string;
@@ -16,14 +31,12 @@ type AddressPayload = {
   country: string;
 };
 
-// Helper functions for pending redirect
+// redirect helpers
 function setPendingRedirect(path: string | null) {
   if (typeof window === "undefined") return;
   if (!path) return;
-  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
-  if (path === "/login" || path.startsWith("/login?")) return;
-  if (path === "/signup" || path.startsWith("/signup")) return;
-
+  if (!path.startsWith("/") || path.includes("://")) return;
+  if (path.startsWith("/login") || path.startsWith("/signup")) return;
   sessionStorage.setItem("pending_redirect", path);
 }
 
@@ -32,15 +45,20 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
-function clearPendingRedirect() {
-  if (typeof window === "undefined") return;
-  sessionStorage.removeItem("pending_redirect");
+// ✅ WRAPPER (IMPORTANT FIX)
+export default function AddressStepPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f4f6fb]" />}>
+      <AddressStepInner />
+    </Suspense>
+  );
 }
 
-export default function AddressStepPage() {
+// ✅ YOUR ORIGINAL CODE MOVED HERE
+function AddressStepInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   const [form, setForm] = useState<AddressPayload>({
     address: "",
     zipcode: "",
@@ -55,36 +73,36 @@ export default function AddressStepPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Store redirect from URL when component mounts
+  // ✅ redirect fix
   useEffect(() => {
     const redirect = searchParams.get("redirect");
-    if (redirect && redirect !== "/" && !redirect.includes('_rsc')) {
+    if (redirect && redirect !== "/" && !redirect.includes("_rsc")) {
       setPendingRedirect(redirect);
     }
   }, [searchParams]);
 
+  // fetch countries
   useEffect(() => {
     const fetchCountries = async () => {
       try {
         setCountryLoading(true);
-        const response = await fetch("/api/auth/register/countries", {
+        const res = await fetch("/api/auth/register/countries", {
           method: "GET",
           cache: "no-store",
         });
 
-        const data = await response.json();
-        
-        const countryList = Array.isArray(data?.data)
+        const data = await res.json();
+
+        const list = Array.isArray(data?.data)
           ? data.data
           : Array.isArray(data?.countries)
           ? data.countries
           : Array.isArray(data)
           ? data
           : [];
-        
-        setCountries(countryList);
-      } catch (error) {
-        console.error("Country fetch error:", error);
+
+        setCountries(list);
+      } catch {
         showToast("error", "❌ Failed to load countries");
       } finally {
         setCountryLoading(false);
@@ -94,53 +112,39 @@ export default function AddressStepPage() {
     fetchCountries();
   }, []);
 
+  // outside click
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsDropdownOpen(false);
         setSearchTerm("");
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   const setField = (k: keyof AddressPayload, v: string) => {
     setForm((p) => ({ ...p, [k]: v }));
   };
 
-  const handleCountrySelect = (country: Country) => {
-    const countryName = country.name || country.country_name || "";
-    setForm((p) => ({ ...p, country: countryName }));
+  const handleCountrySelect = (c: Country) => {
+    const name = c.name || c.country_name || "";
+    setForm((p) => ({ ...p, country: name }));
     setIsDropdownOpen(false);
-    setSearchTerm("");
   };
 
-  const filteredCountries = countries.filter((country) => {
-    const countryName = (country.name || country.country_name || "").toLowerCase();
-    const countryCode = (country.code || country.iso_code || "").toLowerCase();
-    const searchLower = searchTerm.toLowerCase();
-    return countryName.includes(searchLower) || countryCode.includes(searchLower);
+  const filteredCountries = countries.filter((c) => {
+    const name = (c.name || c.country_name || "").toLowerCase();
+    return name.includes(searchTerm.toLowerCase());
   });
 
   const validate = () => {
-    if (!form.address.trim()) {
-      showToast("error", "Address is required");
-      return false;
-    }
-    if (!form.zipcode.trim()) {
-      showToast("error", "Zipcode is required");
-      return false;
-    }
-    if (!form.city.trim()) {
-      showToast("error", "City is required");
-      return false;
-    }
-    if (!form.country.trim()) {
-      showToast("error", "Country is required");
-      return false;
-    }
+    if (!form.address.trim()) return showToast("error", "Address required"), false;
+    if (!form.zipcode.trim()) return showToast("error", "Zipcode required"), false;
+    if (!form.city.trim()) return showToast("error", "City required"), false;
+    if (!form.country.trim()) return showToast("error", "Country required"), false;
     return true;
   };
 
@@ -152,57 +156,49 @@ export default function AddressStepPage() {
 
       const res = await fetch("/api/auth/register/update-profile", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${getToken()}`
+          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify(form),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json();
 
-      if (!res.ok || data?.success === false) {
-        throw new Error(data?.message || "Something went wrong");
-      }
+      if (!res.ok) throw new Error(data?.message);
 
-      showToast("success", data?.message || "Address saved successfully!");
-      
-      // Update to step-5
+      showToast("success", "Address saved!");
+
       localStorage.setItem("wheretogo", "statp5");
-      document.cookie = "wheretogo=statp5; Path=/; Max-Age=604800; SameSite=Lax";
-      localStorage.setItem("user_stage", "statp5");
-      
-      const pendingRedirect = getPendingRedirect();
+      document.cookie = "wheretogo=statp5; Path=/; Max-Age=604800";
 
-      // Use setTimeout to ensure storage is updated before navigation
+      const pending = getPendingRedirect();
+
       setTimeout(() => {
-        if (pendingRedirect) {
-          router.replace(`/signup/step-5?redirect=${encodeURIComponent(pendingRedirect)}`);
-        } else {
-          router.replace("/signup/step-5");
-        }
+        router.replace(
+          pending
+            ? `/signup/step-5?redirect=${encodeURIComponent(pending)}`
+            : "/signup/step-5"
+        );
       }, 100);
-      
-    } catch (err: any) {
-      showToast("error", err?.message || "Failed to save address");
+    } catch (e: any) {
+      showToast("error", e?.message || "Failed");
     } finally {
       setLoading(false);
     }
   };
 
   const handlePrevious = () => {
-    const pendingRedirect = getPendingRedirect();
-    
-    // Update to step-3 for back navigation
-    localStorage.setItem("wheretogo", "statp3");
-    document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800; SameSite=Lax";
-    localStorage.setItem("user_stage", "statp3");
+    const pending = getPendingRedirect();
 
-    if (pendingRedirect) {
-      router.replace(`/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`);
-    } else {
-      router.replace("/signup/step-3");
-    }
+    localStorage.setItem("wheretogo", "statp3");
+    document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800";
+
+    router.replace(
+      pending
+        ? `/signup/step-3?redirect=${encodeURIComponent(pending)}`
+        : "/signup/step-3"
+    );
   };
 
   return (

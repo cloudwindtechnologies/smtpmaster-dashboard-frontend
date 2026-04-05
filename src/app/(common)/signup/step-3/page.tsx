@@ -1,12 +1,11 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Building2, Globe, Loader2, User, ChevronDown, Search, ArrowLeft } from "lucide-react";
+import { Globe, Loader2, User } from "lucide-react";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { token as getToken } from "@/components/app_component/common/http";
-import { jwtDecode } from "jwt-decode";
 
 type FormState = {
   first_name: string;
@@ -15,11 +14,12 @@ type FormState = {
   website: string;
 };
 
-// Helper functions for pending redirect
 function setPendingRedirect(path: string | null) {
   if (typeof window === "undefined") return;
   if (!path) return;
-  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (!path.startsWith("/")) return;
+  if (path.startsWith("//")) return;
+  if (path.includes("://")) return;
   if (path === "/login" || path.startsWith("/login?")) return;
   if (path === "/signup" || path.startsWith("/signup")) return;
 
@@ -36,62 +36,52 @@ function clearPendingRedirect() {
   sessionStorage.removeItem("pending_redirect");
 }
 
-// Function to update token with new wheretogo value
-function updateTokenWithNewStage(currentToken: string, newStage: string): string {
-  try {
-    const decoded: any = jwtDecode(currentToken);
-    
-    // Create updated payload with new wheretogo
-    const updatedPayload = {
-      ...decoded,
-      data: {
-        ...(decoded.data || {}),
-        wheretogo: newStage
-      }
-    };
-    
-    // Re-encode to base64 (this is just for storage, actual validation still needs server)
-    // Note: This doesn't create a valid JWT signature, but it's enough for client-side checks
-    // The middleware will still validate with the server
-    const updatedToken = currentToken; // Keep original token
-    
-    return updatedToken;
-  } catch (error) {
-    console.error("Error updating token:", error);
-    return currentToken;
+function getSafeRedirectFromUrl() {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const redirect = params.get("redirect");
+
+  if (!redirect) return null;
+  if (!redirect.startsWith("/")) return null;
+  if (redirect.startsWith("//")) return null;
+  if (redirect.includes("://")) return null;
+  if (redirect === "/") return null;
+  if (redirect.includes("_rsc")) return null;
+  if (redirect === "/login" || redirect.startsWith("/login?")) return null;
+  if (redirect === "/signup" || redirect.startsWith("/signup")) return null;
+
+  return redirect;
+}
+
+function saveRedirectFromUrlIfAny() {
+  const redirect = getSafeRedirectFromUrl();
+  if (redirect) {
+    setPendingRedirect(redirect);
   }
 }
 
 export default function ProfileSetupPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  
+
   const [form, setForm] = useState<FormState>({
     first_name: "",
     last_name: "",
     country: "",
     website: "",
   });
-  
-  const [countryLoading, setCountryLoading] = useState(false);
+
   const [loading, setLoading] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Store redirect from URL when component mounts
   useEffect(() => {
-    const redirect = searchParams.get("redirect");
-    if (redirect && redirect !== "/" && !redirect.includes('_rsc')) {
-      setPendingRedirect(redirect);
-    }
-  }, [searchParams]);
+    saveRedirectFromUrlIfAny();
+  }, []);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
+        // keep if dropdown added later
       }
     };
 
@@ -104,16 +94,30 @@ export default function ProfileSetupPage() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const validateForm = () => {
+    if (!form.first_name.trim()) {
+      showToast("error", "First name is required");
+      return false;
+    }
+    if (!form.last_name.trim()) {
+      showToast("error", "Last name is required");
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
+
     setLoading(true);
 
     try {
       const res = await fetch("/api/auth/register/update-profile", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${getToken()}`
+          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify(form),
       });
@@ -125,22 +129,13 @@ export default function ProfileSetupPage() {
       }
 
       showToast("success", data?.message || "Profile updated successfully!");
-      
-      // Update local storage and cookie
+
       localStorage.setItem("wheretogo", "statp4");
+      localStorage.setItem("user_stage", "statp4");
       document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
-      
-      // CRITICAL: Also update the token in cookie to have the new wheretogo
-      const currentToken = getToken();
-      if (currentToken) {
-        // Store the new wheretogo in localStorage for OnboardingGuard to check
-        localStorage.setItem("user_stage", "statp4");
-      }
-      
-      // After successful update, redirect to step-4
+
       const pendingRedirect = getPendingRedirect();
-      
-      // Use setTimeout to ensure localStorage is updated before navigation
+
       setTimeout(() => {
         if (pendingRedirect) {
           router.replace(`/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`);
@@ -148,7 +143,6 @@ export default function ProfileSetupPage() {
           router.replace("/signup/step-4");
         }
       }, 100);
-      
     } catch (err: any) {
       showToast("error", err?.message || "Server error");
     } finally {
@@ -160,15 +154,14 @@ export default function ProfileSetupPage() {
     <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
       <div className="mx-auto max-w-xl">
         <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {/* Header with Logo */}
           <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
-                <Image 
-                  src="/Logoicon.png" 
-                  alt="SMTPMaster Logo" 
-                  width={28} 
-                  height={28} 
+                <Image
+                  src="/Logoicon.png"
+                  alt="SMTPMaster Logo"
+                  width={28}
+                  height={28}
                   className="object-contain"
                 />
               </div>
@@ -183,10 +176,8 @@ export default function ProfileSetupPage() {
             </div>
           </div>
 
-          {/* Content */}
           <div className="p-5 sm:p-6">
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* First Name */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   First name <span className="text-red-500">*</span>
@@ -205,7 +196,6 @@ export default function ProfileSetupPage() {
                 </div>
               </div>
 
-              {/* Last Name */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Last name <span className="text-red-500">*</span>
@@ -224,7 +214,6 @@ export default function ProfileSetupPage() {
                 </div>
               </div>
 
-              {/* Website */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Website
@@ -242,7 +231,6 @@ export default function ProfileSetupPage() {
                 </div>
               </div>
 
-              {/* Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
