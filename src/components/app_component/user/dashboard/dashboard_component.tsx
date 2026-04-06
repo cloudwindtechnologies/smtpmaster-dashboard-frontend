@@ -320,39 +320,39 @@ function StatCard({
   );
 }
 
-function AlertCard({
-  domain,
-  message,
-  onDismiss,
-}: {
-  domain: string;
-  message: string;
-  onDismiss: () => void;
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-xl border border-[var(--warning)]/30 bg-gradient-to-r from-[var(--warning-soft)] to-[var(--brand-soft)] p-4">
-      <div className="absolute -right-6 -top-6 h-16 w-16 rounded-full bg-gradient-to-br from-[var(--warning)] to-transparent opacity-10" />
-      <div className="relative flex items-start gap-3">
-        <div className="mt-0.5">
-          <AlertTriangle className="h-5 w-5 text-[var(--warning)]" />
-        </div>
-        <div className="flex-1">
-          <h4 className="font-semibold text-[var(--text-strong)]">
-            Domain Requires Validation: <span className="text-[var(--warning)]">{domain}</span>
-          </h4>
-          <p className="mt-1 text-sm text-[var(--text-soft)]">{message}</p>
-        </div>
-        <button
-          onClick={onDismiss}
-          className="text-[var(--text-faint)] transition-colors hover:text-[var(--text-soft)]"
-          aria-label="Dismiss"
-        >
-          <XCircle className="h-5 w-5" />
-        </button>
-      </div>
-    </div>
-  );
-}
+// function AlertCard({
+//   domain,
+//   message,
+//   onDismiss,
+// }: {
+//   domain: string;
+//   message: string;
+//   onDismiss: () => void;
+// }) {
+//   return (
+//     <div className="relative overflow-hidden rounded-xl border border-[var(--warning)]/30 bg-gradient-to-r from-[var(--warning-soft)] to-[var(--brand-soft)] p-4">
+//       <div className="absolute -right-6 -top-6 h-16 w-16 rounded-full bg-gradient-to-br from-[var(--warning)] to-transparent opacity-10" />
+//       <div className="relative flex items-start gap-3">
+//         <div className="mt-0.5">
+//           <AlertTriangle className="h-5 w-5 text-[var(--warning)]" />
+//         </div>
+//         <div className="flex-1">
+//           <h4 className="font-semibold text-[var(--text-strong)]">
+//             Domain Requires Validation: <span className="text-[var(--warning)]">{domain}</span>
+//           </h4>
+//           <p className="mt-1 text-sm text-[var(--text-soft)]">{message}</p>
+//         </div>
+//         <button
+//           onClick={onDismiss}
+//           className="text-[var(--text-faint)] transition-colors hover:text-[var(--text-soft)]"
+//           aria-label="Dismiss"
+//         >
+//           <XCircle className="h-5 w-5" />
+//         </button>
+//       </div>
+//     </div>
+//   );
+// }
 
 function MonthlyOverviewCard({
   remaining,
@@ -851,10 +851,10 @@ export default function DashboardPage() {
   const derived = useMemo(() => {
     const emailStats = Array.isArray(stats?.emailStats) ? stats!.emailStats : [];
 
-    const sumDeliveredRows = emailStats.reduce((acc, r) => acc + toNum(r.delivered_emails), 0);
-    const sumBounceRows = emailStats.reduce((acc, r) => acc + toNum(r.bounce_mails), 0);
-    const sumHardRows = emailStats.reduce((acc, r) => acc + toNum(r.all_hard_bounce), 0);
-    const sumSoftRows = emailStats.reduce((acc, r) => acc + toNum(r.all_soft_bounce), 0);
+    // const sumDeliveredRows = emailStats.reduce((acc, r) => acc + toNum(r.delivered_emails), 0);
+    // const sumBounceRows = emailStats.reduce((acc, r) => acc + toNum(r.bounce_mails), 0);
+    // const sumHardRows = emailStats.reduce((acc, r) => acc + toNum(r.all_hard_bounce), 0);
+    // const sumSoftRows = emailStats.reduce((acc, r) => acc + toNum(r.all_soft_bounce), 0);
 
     const active = stats?.activeemailStats ?? null;
 
