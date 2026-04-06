@@ -41,6 +41,23 @@ export async function POST(req: Request) {
         { status: 401 }
       );
     }
+
+    
+    const response = NextResponse.json({
+      success: true,
+      message: data?.message || "Login successful",
+      token: data.token,
+      role: data.role,
+      wheretogo: data.wheretogo,
+    });
+
+    response.cookies.set("token", data.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
     return NextResponse.json({
       token: data.token || data.access_token,
       role: data.role || data.user?.role,
