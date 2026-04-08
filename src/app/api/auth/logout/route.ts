@@ -3,12 +3,23 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = req.headers.get("authorization"); // "Bearer xxx"
+    const auth = req.headers.get("authorization");
+
     if (!auth || !auth.toLowerCase().startsWith("bearer ")) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { code: 401, message: "Missing token" },
         { status: 401 }
       );
+
+      response.cookies.set("token", "", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        expires: new Date(0),
+      });
+
+      return response;
     }
 
     const laravelRes = await fetch(`${apiURL}/api/v1/logout`, {
@@ -22,11 +33,31 @@ export async function GET(req: NextRequest) {
 
     const data = await laravelRes.json().catch(() => ({}));
 
-    return NextResponse.json(data, { status: laravelRes.status });
+    const response = NextResponse.json(data, { status: laravelRes.status });
+
+    response.cookies.set("token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      expires: new Date(0),
+    });
+
+    return response;
   } catch (e: any) {
-    return NextResponse.json(
+    const response = NextResponse.json(
       { code: 500, message: e?.message || "Server error" },
       { status: 500 }
     );
+
+    response.cookies.set("token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      expires: new Date(0),
+    });
+
+    return response;
   }
 }

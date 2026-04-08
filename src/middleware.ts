@@ -2,9 +2,22 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-type OnboardingStep = "statp2" | "statp3" | "statp4" | "statp5" | "statp7" | "dashboard";
+type OnboardingStep =
+  | "statp2"
+  | "statp3"
+  | "statp4"
+  | "statp5"
+  | "statp7"
+  | "dashboard";
 
-const STEP_SEQUENCE: OnboardingStep[] = ["statp2", "statp3", "statp4", "statp5", "statp7", "dashboard"];
+const STEP_SEQUENCE: OnboardingStep[] = [
+  "statp2",
+  "statp3",
+  "statp4",
+  "statp5",
+  "statp7",
+  "dashboard",
+];
 
 const STEP_TO_ROUTE: Record<OnboardingStep, string> = {
   statp2: "/signup/step-2",
@@ -17,7 +30,13 @@ const STEP_TO_ROUTE: Record<OnboardingStep, string> = {
 
 const AUTH_PAGES = ["/login", "/signup"];
 const PUBLIC_ROUTES = ["/login", "/signup", "/forgot_password", "/unauthorized"];
-const PUBLIC_PREFIXES = ["/_next", "/images", "/api/auth/login", "/api/auth/register"];
+const PUBLIC_PREFIXES = [
+  "/_next",
+  "/images",
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/logout",
+];
 
 function isPublicRoute(pathname: string) {
   if (PUBLIC_ROUTES.includes(pathname)) return true;
@@ -29,6 +48,7 @@ function isPublicRoute(pathname: string) {
 async function verifyJWT(token: string): Promise<any | null> {
   try {
     const secretValue = process.env.JWT_SECRET_KEY;
+
     if (!secretValue) {
       console.error("[Middleware] JWT_SECRET_KEY missing");
       return null;
@@ -47,7 +67,7 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const token = request.cookies.get("token")?.value;
 
-  // If no token, allow public routes
+  // no token
   if (!token) {
     if (isPublicRoute(pathname)) {
       return NextResponse.next();
@@ -64,7 +84,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Token exists, verify it
   const decoded = await verifyJWT(token);
 
   if (!decoded) {
@@ -76,16 +95,11 @@ export async function middleware(request: NextRequest) {
   const roleId = Number(decoded?.data?.login_user_role_id);
   const wheretogo = (decoded?.data?.wheretogo as OnboardingStep) || "statp2";
 
-  // Prevent logged-in users from opening login/signup pages
+  // let /login and /signup render normally
   if (AUTH_PAGES.includes(pathname)) {
-    if (roleId === 1) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-
-    return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
+    return NextResponse.next();
   }
 
-  // Other public routes like forgot_password can still open if you want
   if (isPublicRoute(pathname)) {
     return NextResponse.next();
   }
@@ -97,7 +111,9 @@ export async function middleware(request: NextRequest) {
   const currentStepIndex = STEP_SEQUENCE.indexOf(wheretogo);
 
   if (currentStepIndex === -1) {
-    return NextResponse.redirect(new URL("/login?error=invalid_payload", request.url));
+    const response = NextResponse.redirect(new URL("/login?error=invalid_payload", request.url));
+    response.cookies.delete("token");
+    return response;
   }
 
   if (pathname === "/") {
