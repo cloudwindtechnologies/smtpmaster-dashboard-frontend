@@ -76,7 +76,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(null);
 
         // only redirect on protected pages
-        if (!isPublicRoute) {
+        if (!isPublicRoute ) {
           router.push("/login");
         }
         return;
