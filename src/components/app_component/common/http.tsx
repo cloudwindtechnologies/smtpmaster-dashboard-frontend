@@ -20,7 +20,7 @@
 // components/app_component/common/http.ts
 import { getToken as getAuthToken } from '@/lib/auth';
 
-export const apiURL = 'http://localhost:8000' //'https://backend.way2smtp.com';
+export const apiURL = 'https://backend.way2smtp.com' //'https://backend.way2smtp.com';
 
 export const token = (): string | null => {
   return getAuthToken(); // Use the tab-aware token function
