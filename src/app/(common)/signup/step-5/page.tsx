@@ -5,37 +5,102 @@ import { useRouter } from "next/navigation";
 import { Users, Contact, ShoppingCart, Loader2, ArrowLeft } from "lucide-react";
 import Image from "next/image";
 import { showToast } from "@/components/app_component/common/toastHelper";
+import { token as getToken } from "@/components/app_component/common/http";
 
 type FormState = {
-  hmpiyt: string; // stored as string in UI
-  hmcdh: string;  // stored as string in UI
+  hmpiyt: string;
+  hmcdh: string;
   sellonline: boolean | null;
 };
 
+function getDisplayValue(range: string, storedValue: string) {
+  if (!storedValue) return "";
+  
+  // Handle the 51+ case
+  if (storedValue === "51") return "51+";
+  if (storedValue === "5000") return "5000+";
+  
+  // For ranges like 0-1, 2-10, 11-50
+  if (range.includes("-")) {
+    const parts = range.split("-");
+    if (parts[1] === storedValue) return range;
+  }
+  
+  // Try to find matching range based on stored max value
+  const ranges = {
+    "0-1": "1",
+    "2-10": "10",
+    "11-50": "50",
+    "51+": "51",
+    "1-300": "300",
+    "301-1000": "1000",
+    "1001-5000": "5000",
+    "5000+": "5000"
+  };
+  
+  for (const [key, value] of Object.entries(ranges)) {
+    if (value === storedValue) return key;
+  }
+  
+  return "";
+}
+
 function getMaxValue(range: string) {
   if (!range) return "";
-  if (range.includes("+")) return range.replace("+", "");
-  const parts = range.split("-");
-  return parts[1] || "";
+  if (range === "51+") return "51";
+  if (range === "5000+") return "5000";
+  if (range.includes("-")) {
+    const parts = range.split("-");
+    return parts[1] || "";
+  }
+  return "";
+}
+
+function setPendingRedirect(path: string | null) {
+  if (typeof window === "undefined") return;
+  if (!path) return;
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  if (path === "/signup" || path.startsWith("/signup")) return;
+
+  sessionStorage.setItem("pending_redirect", path);
+}
+
+function getPendingRedirect() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("pending_redirect");
+}
+
+// Function to update user stage - calls backend to calculate and get fresh JWT
+async function updateUserStage() {
+  try {
+    const response = await fetch("/api/auth/update-stage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
+        return data.wheretogo;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to update stage:", error);
+    return null;
+  }
 }
 
 export default function OtherInfoPage() {
   const router = useRouter();
-
-  function setPendingRedirect(path: string | null) {
-    if (typeof window === "undefined") return;
-    if (!path) return;
-    if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
-    if (path === "/login" || path.startsWith("/login?")) return;
-    if (path === "/signup" || path.startsWith("/signup")) return;
-
-    sessionStorage.setItem("pending_redirect", path);
-  }
-
-  function getPendingRedirect() {
-    if (typeof window === "undefined") return null;
-    return sessionStorage.getItem("pending_redirect");
-  }
 
   const [form, setForm] = useState<FormState>({
     hmpiyt: "",
@@ -95,19 +160,20 @@ export default function OtherInfoPage() {
       if (!res.ok || data?.success === false) {
         throw new Error(data?.message || "Something went wrong");
       }
-      showToast("success",data?.message || "Saved successfully!")
+      
+      showToast("success", data?.message || "Saved successfully!");
       setSuccessMsg(data?.message || "Saved successfully!");
-      const pendingRedirect = getPendingRedirect();
 
+      // Call updateStage to get fresh JWT with calculated wheretogo
+      await updateUserStage();
+
+      const pendingRedirect = getPendingRedirect();
+      setTimeout(() => {
       if (pendingRedirect) {
-        localStorage.setItem("wheretogo", "statp7");
-        document.cookie = "wheretogo=statp7; Path=/; Max-Age=604800; SameSite=Lax";
-        router.replace(`/signup/step-7?redirect=${encodeURIComponent(pendingRedirect)}`);
+        window.location.href = `/signup/step-7?redirect=${encodeURIComponent(pendingRedirect)}`;
       } else {
-        localStorage.setItem("wheretogo", "statp7");
-        document.cookie = "wheretogo=statp7; Path=/; Max-Age=604800; SameSite=Lax";
-        router.replace("/signup/step-7");
-      }
+        window.location.href = "/signup/step-7";
+      }},100);
     } catch (err: any) {
       setApiError(err?.message || "Failed to save");
     } finally {
@@ -118,22 +184,17 @@ export default function OtherInfoPage() {
   const handelback = () => {
     const pendingRedirect = getPendingRedirect();
 
-    if (pendingRedirect) {
-      localStorage.setItem("wheretogo", "stat4");
-      document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
-      router.replace(`/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`);
-    } else {
-      localStorage.setItem("wheretogo", "stat4");
-      document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
-      router.replace("/signup/step-4");
-    }
+     if (pendingRedirect) {
+          window.location.href = `/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`;
+        } else {
+          window.location.href = "/signup/step-4";
+        }
   };
 
   return (
     <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
       <div className="mx-auto max-w-xl">
         <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {/* Header with Logo */}
           <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
@@ -156,7 +217,6 @@ export default function OtherInfoPage() {
             </div>
           </div>
 
-          {/* Content */}
           <div className="p-5 sm:p-6">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-900">A few more details</h2>
@@ -166,7 +226,6 @@ export default function OtherInfoPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Team size */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   How many people are in your team? <span className="text-red-500">*</span>
@@ -174,9 +233,10 @@ export default function OtherInfoPage() {
                 <div className="relative">
                   <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <select
-                    value={form.hmpiyt ? `0-${form.hmpiyt}` : ""}
+                    value={getDisplayValue("", form.hmpiyt)}
                     onChange={(e) => {
-                      const max = getMaxValue(e.target.value);
+                      const selectedValue = e.target.value;
+                      const max = getMaxValue(selectedValue);
                       setForm((p) => ({ ...p, hmpiyt: max }));
                       setErrors((p) => ({ ...p, hmpiyt: "" }));
                     }}
@@ -195,7 +255,6 @@ export default function OtherInfoPage() {
                 {errors.hmpiyt && <p className="mt-1 text-xs text-red-500">{errors.hmpiyt}</p>}
               </div>
 
-              {/* Contacts size */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   How many contacts do you have? <span className="text-red-500">*</span>
@@ -203,9 +262,10 @@ export default function OtherInfoPage() {
                 <div className="relative">
                   <Contact className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <select
-                    value={form.hmcdh ? `0-${form.hmcdh}` : ""}
+                    value={getDisplayValue("", form.hmcdh)}
                     onChange={(e) => {
-                      const max = getMaxValue(e.target.value);
+                      const selectedValue = e.target.value;
+                      const max = getMaxValue(selectedValue);
                       setForm((p) => ({ ...p, hmcdh: max }));
                       setErrors((p) => ({ ...p, hmcdh: "" }));
                     }}
@@ -224,7 +284,6 @@ export default function OtherInfoPage() {
                 {errors.hmcdh && <p className="mt-1 text-xs text-red-500">{errors.hmcdh}</p>}
               </div>
 
-              {/* Sell online */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Do you sell online? <span className="text-red-500">*</span>
@@ -266,14 +325,12 @@ export default function OtherInfoPage() {
                 {errors.sellonline && <p className="mt-1 text-xs text-red-500">{errors.sellonline}</p>}
               </div>
 
-              {/* API messages */}
               {apiError && (
                 <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
                   {apiError}
                 </div>
               )}
 
-              {/* Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"

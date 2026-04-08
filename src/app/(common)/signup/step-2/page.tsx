@@ -23,13 +23,8 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
-function clearPendingRedirect() {
-  if (typeof window === "undefined") return;
-  sessionStorage.removeItem("pending_redirect");
-}
-
-// Function to update user stage
-async function updateUserStage(newStage: string) {
+// Function to update user stage - calls backend to calculate and get fresh JWT
+async function updateUserStage() {
   try {
     const response = await fetch("/api/auth/update-stage", {
       method: "POST",
@@ -37,7 +32,6 @@ async function updateUserStage(newStage: string) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,
       },
-      body: JSON.stringify({ wheretogo: newStage }),
     });
 
     if (response.ok) {
@@ -47,7 +41,7 @@ async function updateUserStage(newStage: string) {
       if (data.token) {
         document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
         localStorage.setItem("token", data.token);
-        return data.token;
+        return data.wheretogo;
       }
     }
 
@@ -87,7 +81,6 @@ function VerifyEmailPageInner() {
     return `${safeName}@${domain}`;
   }, [email]);
 
- 
   useEffect(() => {
     const redirect = searchParams.get("redirect");
     if (redirect && redirect !== "/" && !redirect.includes("_rsc")) {
@@ -132,31 +125,22 @@ function VerifyEmailPageInner() {
       showToast("success", data?.message || "Email verified!");
 
       // Update token if backend returns new one from verification
-      let updatedToken = data.token;
-      if (updatedToken) {
-        document.cookie = `token=${encodeURIComponent(updatedToken)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        localStorage.setItem("token", updatedToken);
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
       }
 
-      // IMPORTANT: Update user stage to statp3
-      const newToken = await updateUserStage("statp3");
-
-      if (newToken) {
-        updatedToken = newToken;
-      }
-
-      // Also update local storage
-      localStorage.setItem("wheretogo", "statp3");
-      document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800; SameSite=Lax";
+      // IMPORTANT: Call updateStage to get fresh JWT with calculated wheretogo
+      await updateUserStage();
 
       // After verification, preserve redirect to next step
       const pendingRedirect = getPendingRedirect();
 
       setTimeout(() => {
-        if (pendingRedirect) {
-          router.replace(`/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`);
+      if (pendingRedirect) {
+          window.location.href = `/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`;
         } else {
-          router.replace("/signup/step-3");
+          window.location.href = "/signup/step-3";
         }
       }, 100);
     } catch (err: any) {
@@ -199,7 +183,7 @@ function VerifyEmailPageInner() {
               </div>
               <div>
                 <h1 className="text-lg font-semibold text-white sm:text-xl">Verify Email</h1>
-                <p className="text-sm text-white/90">Complete this step to continue</p>
+                <p className="text-sm text-white/90">Step 2 of 5: Complete this step to continue</p>
               </div>
             </div>
           </div>

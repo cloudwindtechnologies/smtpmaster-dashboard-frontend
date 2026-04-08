@@ -31,7 +31,6 @@ type AddressPayload = {
   country: string;
 };
 
-// redirect helpers
 function setPendingRedirect(path: string | null) {
   if (typeof window === "undefined") return;
   if (!path) return;
@@ -45,7 +44,34 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
-// ✅ WRAPPER (IMPORTANT FIX)
+// Function to update user stage - calls backend to calculate and get fresh JWT
+async function updateUserStage() {
+  try {
+    const response = await fetch("/api/auth/update-stage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
+        return data.wheretogo;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to update stage:", error);
+    return null;
+  }
+}
+
 export default function AddressStepPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-[#f4f6fb]" />}>
@@ -54,7 +80,6 @@ export default function AddressStepPage() {
   );
 }
 
-// ✅ YOUR ORIGINAL CODE MOVED HERE
 function AddressStepInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -73,7 +98,6 @@ function AddressStepInner() {
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // ✅ redirect fix
   useEffect(() => {
     const redirect = searchParams.get("redirect");
     if (redirect && redirect !== "/" && !redirect.includes("_rsc")) {
@@ -81,7 +105,6 @@ function AddressStepInner() {
     }
   }, [searchParams]);
 
-  // fetch countries
   useEffect(() => {
     const fetchCountries = async () => {
       try {
@@ -112,7 +135,6 @@ function AddressStepInner() {
     fetchCountries();
   }, []);
 
-  // outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -169,17 +191,17 @@ function AddressStepInner() {
 
       showToast("success", "Address saved!");
 
-      localStorage.setItem("wheretogo", "statp5");
-      document.cookie = "wheretogo=statp5; Path=/; Max-Age=604800";
+      // Call updateStage to get fresh JWT with calculated wheretogo
+      await updateUserStage();
 
       const pending = getPendingRedirect();
 
       setTimeout(() => {
-        router.replace(
-          pending
-            ? `/signup/step-5?redirect=${encodeURIComponent(pending)}`
-            : "/signup/step-5"
-        );
+      if (pending) {
+      window.location.href = `/signup/step-5?redirect=${encodeURIComponent(pending)}`;
+      } else {
+        window.location.href = "/signup/step-5";
+      }
       }, 100);
     } catch (e: any) {
       showToast("error", e?.message || "Failed");
@@ -188,24 +210,20 @@ function AddressStepInner() {
     }
   };
 
-  const handlePrevious = () => {
-    const pending = getPendingRedirect();
+  // const handlePrevious = () => {
+  //   const pending = getPendingRedirect();
 
-    localStorage.setItem("wheretogo", "statp3");
-    document.cookie = "wheretogo=statp3; Path=/; Max-Age=604800";
-
-    router.replace(
-      pending
-        ? `/signup/step-3?redirect=${encodeURIComponent(pending)}`
-        : "/signup/step-3"
-    );
-  };
+  //   router.replace(
+  //     pending
+  //       ? `/signup/step-3?redirect=${encodeURIComponent(pending)}`
+  //       : "/signup/step-3"
+  //   );
+  // };
 
   return (
     <div className="min-h-screen bg-[#f4f6fb] p-3 pb-32 sm:p-4 md:p-6">
       <div className="mx-auto max-w-xl">
         <div className="overflow-visible rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {/* Header with Logo */}
           <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
@@ -228,7 +246,6 @@ function AddressStepInner() {
             </div>
           </div>
 
-          {/* Content */}
           <div className="overflow-visible p-5 sm:p-6">
             <form
               onSubmit={(e) => {
@@ -237,7 +254,6 @@ function AddressStepInner() {
               }}
               className="space-y-5"
             >
-              {/* Address */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Address <span className="text-red-500">*</span>
@@ -255,7 +271,6 @@ function AddressStepInner() {
                 </div>
               </div>
 
-              {/* Zipcode */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Zipcode <span className="text-red-500">*</span>
@@ -273,7 +288,6 @@ function AddressStepInner() {
                 </div>
               </div>
 
-              {/* City */}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   City <span className="text-red-500">*</span>
@@ -291,7 +305,6 @@ function AddressStepInner() {
                 </div>
               </div>
 
-              {/* Country Dropdown */}
               <div ref={dropdownRef} className="relative z-[100]">
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Country <span className="text-red-500">*</span>
@@ -328,7 +341,6 @@ function AddressStepInner() {
                   />
                 </div>
 
-                {/* Dropdown Menu */}
                 {isDropdownOpen && !countryLoading && (
                   <div className="absolute left-0 right-0 top-full mt-2 z-[9999] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
                     <div className="border-b border-gray-200 bg-gray-50 p-3">
@@ -371,17 +383,8 @@ function AddressStepInner() {
                 )}
               </div>
 
-              {/* Buttons */}
               <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handlePrevious}
-                  disabled={loading}
-                  className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Previous
-                </button>
+          
 
                 <button
                   type="submit"

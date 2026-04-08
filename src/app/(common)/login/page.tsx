@@ -86,35 +86,33 @@ function clearPendingRedirect() {
   }
 }, [redirectFromUrl]);
 
-  const onLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+const onLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          "g-recaptcha-response": 1,
-          type: "login",
-          client_user_agent: navigator.userAgent,
-        }),
-      });
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        "g-recaptcha-response": 1,
+        type: "login",
+        client_user_agent: navigator.userAgent,
+      }),
+    });
 
-      const data = (await res.json()) as LoginResponse;
-      
-      
-      if (!res.ok || !data?.success || !data?.token ) {
-        
-        showToast('error',data?.message || "Login failed")
-        return;
-      }else{
-        showToast("success",data.message||'login success')
-      }
+    const data = (await res.json()) as LoginResponse;
+    
+    if (!res.ok || !data?.success || !data?.token) {
+      showToast('error', data?.message || "Login failed");
+      return;
+    } else {
+      showToast("success", data.message || 'login success');
+    }
 
-      const role = data.role || "";
+    const role = data.role || "";
 
     if (role !== "superadmin") {
       localStorage.setItem("user_token", data.token);
@@ -128,51 +126,47 @@ function clearPendingRedirect() {
 
     localStorage.setItem("gmail", email || "");
 
-    // Only token cookie for middleware
-    document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-      
-     
+    // ❌ REMOVE THIS LINE - Server sets HTTP-only cookie, not client!
+    // document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
-      window.dispatchEvent(new Event("user-login"));
+    window.dispatchEvent(new Event("user-login"));
 
-      if (redirectFromUrl) {
-        setPendingRedirect(redirectFromUrl);
-      }
-      console.log('hellodata',data.wheretogo);
-      const fallbackRedirect = getRedirectPathFromWhereToGo(data.wheretogo);
-      const isUnfinished = fallbackRedirect.startsWith("/signup/");
-      const pendingRedirect = getPendingRedirect();
-
-      // unfinished user must finish steps first
-      if (isUnfinished) {
-        if (pendingRedirect) {
-          window.location.replace(
-            `${fallbackRedirect}?redirect=${encodeURIComponent(pendingRedirect)}`
-          );
-        } else {
-          window.location.replace(fallbackRedirect);
-        }
-        return;
-      }
-
-      // finished user goes to pasted page if available
-      if (pendingRedirect) {
-        clearPendingRedirect();
-        window.location.replace(pendingRedirect);
-        return;
-      }
-
-      window.location.replace(fallbackRedirect);
-     
-    } catch (error) {
-      console.log(error);
-      
-      showToast('error',"Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-
+    if (redirectFromUrl) {
+      setPendingRedirect(redirectFromUrl);
     }
-  };
+    
+    const fallbackRedirect = getRedirectPathFromWhereToGo(data.wheretogo);
+    const isUnfinished = fallbackRedirect.startsWith("/signup/");
+    const pendingRedirect = getPendingRedirect();
+
+    // unfinished user must finish steps first
+    if (isUnfinished) {
+      if (pendingRedirect) {
+        window.location.replace(
+          `${fallbackRedirect}?redirect=${encodeURIComponent(pendingRedirect)}`
+        );
+      } else {
+        window.location.replace(fallbackRedirect);
+      }
+      return;
+    }
+
+    // finished user goes to pasted page if available
+    if (pendingRedirect) {
+      clearPendingRedirect();
+      window.location.replace(pendingRedirect);
+      return;
+    }
+
+    window.location.replace(fallbackRedirect);
+     
+  } catch (error) {
+    console.log(error);
+    showToast('error', "Something went wrong. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
     const signupHref = useMemo(() => {
     return redirectFromUrl
       ? `/signup?redirect=${encodeURIComponent(redirectFromUrl)}`

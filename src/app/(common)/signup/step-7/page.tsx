@@ -8,6 +8,7 @@ import {
   signInWithPhoneNumber,
 } from "firebase/auth";
 import Image from "next/image";
+import { token as getToken } from "@/components/app_component/common/http";
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
@@ -57,6 +58,34 @@ function getCookie(name: string): string | null {
 
 function deleteCookie(name: string) {
   document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+// Function to update user stage - calls backend to calculate and get fresh JWT
+async function updateUserStage() {
+  try {
+    const response = await fetch("/api/auth/update-stage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
+        return data.wheretogo;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to update stage:", error);
+    return null;
+  }
 }
 
 export default function PhoneVerifyPage() {
@@ -222,25 +251,20 @@ function getCountryLabel(item: CountryItem) {
 
       setMessage("✅ Phone verified successfully!");
 
+      // Update token if backend returned new one
       if (data?.token) {
         localStorage.setItem("token", data.token);
         setCookie("token", data.token);
       }
 
-      const finalRole =
-        data?.role === "superadmin" || data?.role === "user"
-          ? data.role
-          : "user";
+      // IMPORTANT: Call updateStage to get fresh JWT with "dashboard"
+      await updateUserStage();
 
-      localStorage.setItem("role", finalRole);
-      setCookie("role", finalRole);
-
-      localStorage.removeItem("wheretogo");
-      deleteCookie("wheretogo");
-
+      // Get the original URL user wanted to visit
       const pendingRedirect = sanitizeInternalRedirect(getCookie("pending_redirect"));
       deleteCookie("pending_redirect");
 
+      // GO TO USER'S DESIRED PAGE OR DASHBOARD!
       setTimeout(() => {
         if (pendingRedirect) {
           window.location.href = pendingRedirect;
@@ -276,7 +300,7 @@ function getCountryLabel(item: CountryItem) {
                   Phone Verification
                 </h1>
                 <p className="text-sm text-white/90">
-                  Step 5 of 5: Verify your mobile number
+                  Final Step: Verify your mobile number
                 </p>
               </div>
             </div>

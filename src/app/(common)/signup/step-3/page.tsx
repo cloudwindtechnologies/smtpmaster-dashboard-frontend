@@ -31,9 +31,33 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
-function clearPendingRedirect() {
-  if (typeof window === "undefined") return;
-  sessionStorage.removeItem("pending_redirect");
+// Function to update user stage - calls backend to calculate and get fresh JWT
+async function updateUserStage() {
+  try {
+    const response = await fetch("/api/auth/update-stage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log(data.token);
+      
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
+        return data.wheretogo;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to update stage:", error);
+    return null;
+  }
 }
 
 function getSafeRedirectFromUrl() {
@@ -130,17 +154,16 @@ export default function ProfileSetupPage() {
 
       showToast("success", data?.message || "Profile updated successfully!");
 
-      localStorage.setItem("wheretogo", "statp4");
-      localStorage.setItem("user_stage", "statp4");
-      document.cookie = "wheretogo=statp4; Path=/; Max-Age=604800; SameSite=Lax";
+      // Call updateStage to get fresh JWT with calculated wheretogo
+      await updateUserStage();
 
       const pendingRedirect = getPendingRedirect();
 
       setTimeout(() => {
-        if (pendingRedirect) {
-          router.replace(`/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`);
+         if (pendingRedirect) {
+          window.location.href = `/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`;
         } else {
-          router.replace("/signup/step-4");
+          window.location.href = "/signup/step-4";
         }
       }, 100);
     } catch (err: any) {
