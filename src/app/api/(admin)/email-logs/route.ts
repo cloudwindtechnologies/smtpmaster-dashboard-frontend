@@ -4,8 +4,6 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
-
 export async function POST(req: Request) {
   try {
     const body = await req.text();
@@ -21,7 +19,8 @@ export async function POST(req: Request) {
       body,
       cache: "no-store",
     });
-
+    console.log(body);
+    
     const text = await res.text();
     return new NextResponse(text, {
       status: res.status,

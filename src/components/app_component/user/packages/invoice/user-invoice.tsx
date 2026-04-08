@@ -96,11 +96,9 @@ type SaveBillingResponse = {
 };
 
 type RazorpayKeyResponse = {
-  code: number;
+  success: boolean;
   message?: string;
-  data?: {
-    apikey?: string;
-  };
+  apikey?: string;
 };
 
 type SubscribeResponse = {
@@ -473,7 +471,7 @@ export default function PackageDetailsPage() {
       try {
         setRazorpayLoading(true);
 
-        const res = await fetch("http://localhost:8000/api/v1/rezpaykey", {
+        const res = await fetch("/api/all-packages/payment/rezpaykey", {
           method: "GET",
           headers: {
             Accept: "application/json",
@@ -483,13 +481,14 @@ export default function PackageDetailsPage() {
         });
 
         const json: RazorpayKeyResponse = await safeJson(res);
-
-        if (!res.ok || json?.code !== 200 || !json?.data?.apikey) {
+        console.log(json);
+        
+        if (!res.ok || json?.success !== true || !json?.apikey) {
           throw new Error(json?.message || "Unable to fetch Razorpay key.");
         }
 
         if (!cancelled) {
-          setRazorpayKey(json.data.apikey);
+          setRazorpayKey(json.apikey);
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -720,7 +719,7 @@ export default function PackageDetailsPage() {
         return;
       }
 
-      const res = await fetch("/api/all-packages/applyCouponCode", {
+      const res = await fetch("/api/all-packages/payment/applyCouponCode", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -835,7 +834,7 @@ export default function PackageDetailsPage() {
 
       const payload = omitReadonlyForPayload(billingForm);
 
-      const res = await fetch("http://localhost:8000/api/v1/savebillingaddress", {
+      const res = await fetch("/api/all-packages/payment/savebillingaddress", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -964,7 +963,7 @@ export default function PackageDetailsPage() {
       payload.couponcode = couponCode.trim();
     }
 
-    const res = await fetch("http://localhost:8000/api/v1/subscribe", {
+    const res = await fetch("/api/all-packages/payment/subscribe", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1551,10 +1550,7 @@ export default function PackageDetailsPage() {
                       <Row label="Total" value={`${currencySymbol}${money(total)}`} strong />
                     </div>
 
-                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                      <div>Razorpay script: {scriptReady ? "Loaded" : "Loading..."}</div>
-                      <div>Razorpay key: {razorpayLoading ? "Fetching..." : razorpayKey ? "Ready" : "Not found"}</div>
-                    </div>
+                    
                   </Card>
 
                   <SecureCheckoutCard />

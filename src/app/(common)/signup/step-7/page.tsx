@@ -1,336 +1,510 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Phone, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
+import { auth } from "@/lib/firebase";
 import {
   ConfirmationResult,
+  RecaptchaVerifier,
   signInWithPhoneNumber,
-  connectAuthEmulator,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { token } from "@/components/app_component/common/http";
+import Image from "next/image";
+import { token as getToken } from "@/components/app_component/common/http";
 
-function digitsOnly(v: string) {
-  return v.replace(/\D/g, "");
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, "");
 }
 
-declare global {
-  interface Window {
-    __authEmulatorConnected?: boolean;
+type CountryItem = {
+  id?: number | string;
+  code?: string;
+  name?: string;
+};
+
+function sanitizeInternalRedirect(path: string | null): string | null {
+  if (!path) return null;
+
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  if (!trimmed.startsWith("/")) return null;
+  if (trimmed.startsWith("//")) return null;
+  if (trimmed.includes("://")) return null;
+  if (trimmed === "/login" || trimmed.startsWith("/login?")) return null;
+  if (trimmed === "/signup" || trimmed.startsWith("/signup")) return null;
+  if (trimmed === "/unauthorized" || trimmed.startsWith("/unauthorized")) return null;
+  if (trimmed.includes("\n") || trimmed.includes("\r")) return null;
+
+  return trimmed;
+}
+
+function setCookie(name: string, value: string, maxAge = 60 * 60 * 24 * 7) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
+}
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+
+  const row = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith(`${name}=`));
+
+  if (!row) return null;
+
+  try {
+    return decodeURIComponent(row.split("=").slice(1).join("="));
+  } catch {
+    return null;
   }
 }
 
-export default function PhoneOtpVerifyPage() {
-  const router = useRouter();
+function deleteCookie(name: string) {
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
 
+// Function to update user stage - calls backend to calculate and get fresh JWT
+async function updateUserStage() {
+  try {
+    const response = await fetch("/api/auth/update-stage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
+        return data.wheretogo;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to update stage:", error);
+    return null;
+  }
+}
+
+export default function PhoneVerifyPage() {
   const [countryCode, setCountryCode] = useState("+91");
+  const [countries, setCountries] = useState<CountryItem[]>([]);
   const [mobile, setMobile] = useState("");
   const [otp, setOtp] = useState("");
-
-  const [sending, setSending] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [fetchingCode, setFetchingCode] = useState(false);
-
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
-
+  const [loading, setLoading] = useState(false);
+  const [countryLoading, setCountryLoading] = useState(true);
   const [confirmationResult, setConfirmationResult] =
     useState<ConfirmationResult | null>(null);
+  const [message, setMessage] = useState("");
+  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const isDev = process.env.NODE_ENV === "development";
+  const filteredCountries = useMemo(() => {
+    const q = searchTerm.toLowerCase().trim();
 
-  const fullNumber = useMemo(() => {
-    const cc = countryCode.startsWith("+") ? countryCode : `+${countryCode}`;
-    const num = digitsOnly(mobile);
-    return num ? `${cc}${num}` : "";
-  }, [countryCode, mobile]);
-
-  const canSendOtp = useMemo(() => {
-    return digitsOnly(mobile).length >= 8 && fullNumber.length > 0;
-  }, [mobile, fullNumber]);
-
-  const canVerify = useMemo(() => {
-    return !!confirmationResult && digitsOnly(otp).length >= 4;
-  }, [confirmationResult, otp]);
+    return countries.filter((item) => {
+      const dialCode = getDialCode(item).toLowerCase();
+      const label = getCountryLabel(item).toLowerCase();
+      return dialCode.includes(q) || label.includes(q);
+    });
+  }, [countries, searchTerm]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const redirect = sanitizeInternalRedirect(params.get("redirect"));
 
-    if (isDev && !window.__authEmulatorConnected) {
-      connectAuthEmulator(auth, "http://127.0.0.1:9099", {
-        disableWarnings: true,
-      });
-      window.__authEmulatorConnected = true;
+    if (redirect) {
+      setCookie("pending_redirect", redirect, 60 * 30);
     }
-  }, [isDev]);
+  }, []);
 
-  const handleSendOtp = async () => {
-    setMessage(null);
+  const fullNumber = `${countryCode}${digitsOnly(mobile)}`;
 
-    if (!canSendOtp) {
-      setMessage({ type: "error", text: "Enter a valid phone number" });
+  useEffect(() => {
+    const fetchCountries = async () => {
+      try {
+        setCountryLoading(true);
+
+        const response = await fetch("/api/auth/register/countries", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = await response.json();
+
+        const countryList = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.countries)
+          ? data.countries
+          : Array.isArray(data)
+          ? data
+          : [];
+
+        
+        setCountries(countryList);
+
+        if (countryList.length > 0) {
+          const india =countryList.find(
+                      (item: CountryItem) =>
+                      item.name?.toLowerCase() === "india" || item.code === "+91"
+                      ) || countryList[0];
+
+          const dialCode = getDialCode(india);
+          if (dialCode) {
+            setCountryCode(dialCode);
+          }
+        }
+      } catch (error) {
+        console.error("Country fetch error:", error);
+        setMessage("❌ Failed to load countries");
+      } finally {
+        setCountryLoading(false);
+      }
+    };
+
+    fetchCountries();
+  }, []);
+
+ function getDialCode(item: CountryItem) {
+  const raw = String(item.code || "").replace(/\s+/g, "").trim();
+  if (!raw) return "";
+  return raw.startsWith("+") ? raw : `+${raw}`;
+}
+
+function getCountryLabel(item: CountryItem) {
+  return item.name || "Country";
+}
+
+  const handleSendOTP = async () => {
+    setMessage("");
+
+    if (!digitsOnly(mobile) || digitsOnly(mobile).length < 6) {
+      setMessage("Please enter a valid phone number");
       return;
     }
 
-    setSending(true);
-
     try {
-      if (!isDev) {
-        throw new Error(
-          "This page is currently set up for development with Firebase Auth Emulator only."
-        );
-      }
+      setLoading(true);
 
-      const result = await signInWithPhoneNumber(auth, fullNumber);
+      const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+        size: "invisible",
+      });
+
+      const result = await signInWithPhoneNumber(auth, fullNumber, verifier);
+
       setConfirmationResult(result);
-
-      setMessage({
-        type: "success",
-        text: "OTP generated in Firebase Auth Emulator.",
-      });
-    } catch (e: any) {
-      console.error("Firebase send OTP error:", e);
-      setMessage({
-        type: "error",
-        text: e?.message || "Failed to send OTP",
-      });
+      setStep("otp");
+      setMessage("✅ OTP sent successfully");
+    } catch (error: any) {
+      console.error("Send OTP error:", error);
+      setMessage(`❌ ${error?.message || "Failed to send OTP"}`);
     } finally {
-      setSending(false);
+      setLoading(false);
     }
   };
 
-  const handleFetchEmulatorCode = async () => {
-    if (!isDev || !fullNumber) return;
-
-    setFetchingCode(true);
-    setMessage(null);
-
-    try {
-      const res = await fetch(
-        "http://127.0.0.1:9099/emulator/v1/projects/demo-project/verificationCodes"
-      );
-      const data = await res.json();
-
-      const match = Array.isArray(data?.verificationCodes)
-        ? data.verificationCodes.find(
-            (item: any) => item.phoneNumber === fullNumber
-          )
-        : null;
-
-      if (!match?.code) {
-        throw new Error("No emulator OTP found for this number.");
-      }
-
-      setOtp(match.code);
-      setMessage({
-        type: "success",
-        text: `Fetched emulator OTP: ${match.code}`,
-      });
-    } catch (e: any) {
-      console.error("Fetch emulator code error:", e);
-      setMessage({
-        type: "error",
-        text: e?.message || "Failed to fetch emulator OTP.",
-      });
-    } finally {
-      setFetchingCode(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage(null);
+  const handleVerifyOTP = async () => {
+    setMessage("");
 
     if (!confirmationResult) {
-      setMessage({ type: "error", text: "Please send OTP first." });
+      setMessage("Please request OTP first");
       return;
     }
 
-    if (!canVerify) {
-      setMessage({ type: "error", text: "Enter a valid OTP." });
+    if (!otp || otp.length < 6) {
+      setMessage("Please enter a valid OTP");
       return;
     }
-
-    setVerifying(true);
 
     try {
-      await confirmationResult.confirm(digitsOnly(otp));
+      setLoading(true);
 
-      const res = await fetch(
-        "http://localhost:8000/api/v1/user/verifyMobileWithFirebase",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Authorization: `Bearer ${token()}`,
-          },
-          body: JSON.stringify({
-            country_code: countryCode,
-            mobile: digitsOnly(mobile),
-            full_number: fullNumber,
-            firebase_verified: true,
-          }),
-        }
-      );
+      const result = await confirmationResult.confirm(otp);
+      const firebaseToken = await result.user.getIdToken();
 
-      const data = await res.json().catch(() => ({}));
+      const appAuthToken =
+        localStorage.getItem("token") || getCookie("token") || "";
 
-      if (!res.ok) {
-        throw new Error(data?.message || "Failed to save verification status");
+      const response = await fetch("/api/auth/register/verify-phone", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${appAuthToken}`,
+        },
+        body: JSON.stringify({
+          country_code: countryCode,
+          mobile: digitsOnly(mobile),
+          full_number: fullNumber,
+          firebase_token: firebaseToken,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.message || "Verification failed");
       }
 
-      setMessage({
-        type: "success",
-        text: data?.message || "Phone verified successfully!",
-      });
+      setMessage("✅ Phone verified successfully!");
 
-      router.replace("/login");
-    } catch (e: any) {
-      console.error("Firebase verify OTP error:", e);
-      setMessage({
-        type: "error",
-        text: e?.message || "OTP verification failed",
-      });
+      // Update token if backend returned new one
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+        setCookie("token", data.token);
+      }
+
+      // IMPORTANT: Call updateStage to get fresh JWT with "dashboard"
+      await updateUserStage();
+
+      // Get the original URL user wanted to visit
+      const pendingRedirect = sanitizeInternalRedirect(getCookie("pending_redirect"));
+      deleteCookie("pending_redirect");
+
+      // GO TO USER'S DESIRED PAGE OR DASHBOARD!
+      setTimeout(() => {
+        if (pendingRedirect) {
+          window.location.href = pendingRedirect;
+        } else {
+          window.location.href = "/";
+        }
+      }, 1200);
+    } catch (error: any) {
+      console.error("Verify error:", error);
+      setMessage(`❌ ${error?.message || "Invalid OTP"}`);
     } finally {
-      setVerifying(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-8">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50">
-            <Phone className="h-6 w-6 text-blue-600" />
+    <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+      <div className="mx-auto max-w-xl">
+        <div className="overflow-visible rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+          <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                <Image
+                  src="/Logoicon.png"
+                  alt="SMTPMaster Logo"
+                  width={28}
+                  height={28}
+                  className="object-contain"
+                />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-white sm:text-xl">
+                  Phone Verification
+                </h1>
+                <p className="text-sm text-white/90">
+                  Final Step: Verify your mobile number
+                </p>
+              </div>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Verify your phone</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Development mode: Firebase Auth Emulator
-          </p>
+
+          <div className="overflow-visible p-5 sm:p-6">
+            <div className="mb-6 text-center">
+              <h2 className="text-[24px] font-bold tracking-tight text-gray-900">
+                {step === "phone" ? "Verify your phone number" : "Enter OTP code"}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {step === "phone"
+                  ? "Secure your account with mobile verification"
+                  : "Enter the 6-digit code sent to your mobile number"}
+              </p>
+            </div>
+
+            {step === "phone" ? (
+              <div className="space-y-5">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Mobile Number <span className="text-red-500">*</span>
+                  </label>
+
+                  <div className="flex gap-3">
+                    <div className="relative w-[170px]">
+                      <button
+                        type="button"
+                        onClick={() => setIsDropdownOpen((prev) => !prev)}
+                        disabled={loading || countryLoading}
+                        className="flex h-11 w-full items-center rounded-xl border border-gray-200 bg-gray-50 px-3 pr-10 text-left text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-60"
+                      >
+                        <span className="truncate">
+                          {countryCode} (
+                          {getCountryLabel(
+                            countries.find((item) => getDialCode(item) === countryCode) || {}
+                          )}
+                          )
+                        </span>
+                      </button>
+
+                      <svg
+                        className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-transform ${
+                          isDropdownOpen ? "rotate-180" : ""
+                        }`}
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+
+                      {isDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full z-[9999] mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+                          <div className="border-b border-gray-200 bg-gray-50 p-3">
+                            <input
+                              type="text"
+                              placeholder="Search country or code..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus:border-[#ff7800] focus:ring-2 focus:ring-[#ff7800]/10"
+                              autoFocus
+                            />
+                          </div>
+
+                          <div className="max-h-64 overflow-y-auto">
+                            {filteredCountries.map((item, index) => {
+                              const dialCode = getDialCode(item);
+                              const label = getCountryLabel(item);
+
+                              if (!dialCode) return null;
+
+                              return (
+                                <button
+                                  key={item.id ?? index}
+                                  type="button"
+                                  onClick={() => {
+                                    setCountryCode(dialCode);
+                                    setIsDropdownOpen(false);
+                                    setSearchTerm("");
+                                  }}
+                                  className="flex w-full items-center justify-between border-b border-gray-100 px-4 py-2.5 text-left text-sm transition hover:bg-orange-50 last:border-b-0"
+                                >
+                                  <span className="font-medium text-gray-900">
+                                    {dialCode}
+                                  </span>
+                                  <span className="ml-3 truncate text-gray-600">
+                                    {label}
+                                  </span>
+                                </button>
+                              );
+                            })}
+
+                            {filteredCountries.length === 0 && (
+                              <div className="px-4 py-6 text-center text-sm text-gray-500">
+                                No countries found
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <input
+                      type="tel"
+                      placeholder="Enter mobile number"
+                      value={mobile}
+                      onChange={(e) => setMobile(e.target.value.replace(/\D/g, ""))}
+                      disabled={loading}
+                      maxLength={15}
+                      className="h-11 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-60"
+                    />
+                  </div>
+
+                  <p className="mt-2 text-xs text-gray-500">
+                    Please enter an active mobile number to receive your verification code.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSendOTP}
+                  disabled={loading || countryLoading || !digitsOnly(mobile)}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? "Sending..." : "Send Verification Code"}
+                </button>
+
+                <div id="recaptcha-container" />
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Verification sent to
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                    {fullNumber}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    OTP Code <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter 6-digit OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    disabled={loading}
+                    maxLength={6}
+                    autoFocus
+                    className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-center text-lg tracking-[0.35em] text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-60"
+                  />
+                </div>
+
+                {!!message && (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                    {message}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep("phone");
+                      setOtp("");
+                      setMessage("");
+                    }}
+                    disabled={loading}
+                    className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Back
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyOTP}
+                    disabled={loading || otp.length < 6}
+                    className="inline-flex h-11 flex-[1.4] items-center justify-center rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? "Verifying..." : "Verify & Continue"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === "phone" && !!message && (
+              <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                {message}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Code
-              </label>
-              <input
-                value={countryCode}
-                onChange={(e) => setCountryCode(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+91"
-                disabled={sending || verifying}
-              />
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone number
-              </label>
-              <input
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="9876543210"
-                inputMode="numeric"
-                disabled={sending || verifying}
-              />
-            </div>
-          </div>
-
-          {fullNumber ? (
-            <div className="text-xs text-gray-600">
-              Sending to:{" "}
-              <span className="font-semibold text-gray-900">{fullNumber}</span>
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={handleSendOtp}
-            disabled={sending || verifying || !canSendOtp}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition disabled:opacity-60"
-          >
-            {sending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {sending ? "Sending OTP..." : "Send OTP"}
-          </button>
-
-          {confirmationResult && (
-            <button
-              type="button"
-              onClick={handleFetchEmulatorCode}
-              disabled={fetchingCode}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition disabled:opacity-60"
-            >
-              {fetchingCode && <Loader2 className="h-4 w-4 animate-spin" />}
-              {fetchingCode ? "Fetching OTP..." : "Fetch Emulator OTP"}
-            </button>
-          )}
+        <div className="mt-6 text-center text-sm text-gray-500">
+          © {new Date().getFullYear()} SMTPMaster. All rights reserved.
         </div>
-
-        <form onSubmit={handleVerifyOtp} className="mt-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              OTP
-            </label>
-            <input
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter OTP"
-              inputMode="numeric"
-              maxLength={8}
-              disabled={sending || verifying}
-            />
-          </div>
-
-          {message && (
-            <div
-              className={[
-                "rounded-lg px-3 py-2 text-sm",
-                message.type === "success"
-                  ? "bg-green-50 text-green-700"
-                  : "bg-red-50 text-red-600",
-              ].join(" ")}
-            >
-              {message.text}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setOtp("");
-                setConfirmationResult(null);
-                setMessage(null);
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-              disabled={sending || verifying}
-            >
-              <RotateCcw className="h-4 w-4" />
-              Reset
-            </button>
-
-            <button
-              type="submit"
-              disabled={sending || verifying || !canVerify}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition disabled:opacity-60"
-            >
-              {verifying ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ShieldCheck className="h-4 w-4" />
-              )}
-              {verifying ? "Verifying..." : "Verify & Continue"}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   );

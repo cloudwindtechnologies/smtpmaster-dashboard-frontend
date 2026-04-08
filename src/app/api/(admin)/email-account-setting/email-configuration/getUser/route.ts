@@ -17,6 +17,8 @@ export async function GET(req: Request) {
     const page = searchParams.get("page") ?? "1";
     const per_page = searchParams.get("per_page") ?? "10";
     const q = searchParams.get("q");
+    const sort_by = searchParams.get("sort_by");
+    const sort_order = searchParams.get("sort_order");
 
     // ✅ Build backend URL safely
     const backendUrl = new URL(`${apiURL}/api/v1/admin/getuser`);
@@ -25,6 +27,13 @@ export async function GET(req: Request) {
 
     if (q && q.trim() !== "") {
       backendUrl.searchParams.set("q", q);
+    }
+    if (sort_by) {
+      backendUrl.searchParams.set("sort_by", sort_by);
+    }
+
+    if (sort_order) {
+      backendUrl.searchParams.set("sort_order", sort_order);
     }
 
     const backendRes = await fetch(backendUrl.toString(), {

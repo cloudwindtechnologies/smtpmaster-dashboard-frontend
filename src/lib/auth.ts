@@ -1,37 +1,18 @@
-// lib/auth.ts
 export const AUTH_KEYS = {
   SUPERADMIN_TOKEN: 'superadmin_token',
   SUPERADMIN_ROLE: 'superadmin_role',
   USER_TOKEN: 'user_token',
+  IMPERSONATE_TOKEN: 'impersonate_token', // Tab-specific impersonation token
 };
 
 // Store tab-specific session type in sessionStorage
 export const getTabSession = (): 'superadmin' | 'user' => {
   if (typeof window === 'undefined') return 'superadmin';
   
-  // First check if explicitly set
-  const explicit = sessionStorage.getItem('tab_session') as 'superadmin' | 'user';
-  if (explicit) {
-    console.log('Tab session from storage:', explicit);
-    return explicit;
-  }
+  // Check explicit tab session first
+  const explicit = sessionStorage.getItem('tab_session') as 'superadmin' | 'user' | null;
+  if (explicit) return explicit;
   
-  // If not set, try to infer from URL and tokens
-  const isUserPage = !window.location.pathname.includes('/super-admin') && 
-                     !window.location.pathname.includes('/admin');
-  const userToken = localStorage.getItem(AUTH_KEYS.USER_TOKEN);
-  const role = localStorage.getItem('role');
-  
-  console.log('Inferring tab session:', { isUserPage, userToken, role });
-  
-  // If it's a user page and we have a user token or the role isn't superadmin, treat it as user
-if (isUserPage && userToken) {
-  console.log('Setting inferred tab session to user');
-  setTabSession('user');
-  return 'user';
-}
-  
-  console.log('Defaulting to superadmin');
   return 'superadmin';
 };
 
@@ -44,37 +25,58 @@ export const getToken = (): string | null => {
   
   const tabSession = getTabSession();
   
-  // Each tab knows its own type from sessionStorage
   if (tabSession === 'user') {
-    return localStorage.getItem(AUTH_KEYS.USER_TOKEN);
+    // ✅ Check sessionStorage first (impersonation), then localStorage (regular user)
+    return sessionStorage.getItem(AUTH_KEYS.IMPERSONATE_TOKEN) || 
+           localStorage.getItem(AUTH_KEYS.USER_TOKEN);
   }
   
   return localStorage.getItem(AUTH_KEYS.SUPERADMIN_TOKEN) || localStorage.getItem('token');
+};
+
+// ✅ For impersonation: store token in sessionStorage (tab-specific only!)
+export const setImpersonationSession = (token: string): void => {
+  sessionStorage.setItem(AUTH_KEYS.IMPERSONATE_TOKEN, token);
+  setTabSession('user');
+};
+
+// Check if current tab is user
+export const isUserTab = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  
+  // Check explicit tab session
+  if (sessionStorage.getItem('tab_session') === 'user') return true;
+  
+  // Check if impersonation token exists in this tab
+  if (sessionStorage.getItem('impersonate_token')) {
+    setTabSession('user');
+    return true;
+  }
+  
+  // Legacy check (for regular users, not impersonation)
+  if (localStorage.getItem(AUTH_KEYS.USER_TOKEN)) {
+    setTabSession('user');
+    return true;
+  }
+  
+  return false;
+};
+
+export const isSuperadminTab = (): boolean => {
+  return !isUserTab();
 };
 
 // Set superadmin session (called at login)
 export const setSuperadminSession = (token: string, role: string): void => {
   localStorage.setItem(AUTH_KEYS.SUPERADMIN_TOKEN, token);
   localStorage.setItem(AUTH_KEYS.SUPERADMIN_ROLE, role);
-  localStorage.setItem('token', token); // Backward compatibility
+  localStorage.setItem('token', token);
   localStorage.setItem('role', role);
-  
-  // This tab is superadmin
   setTabSession('superadmin');
 };
 
-// Set user session in the NEW TAB only
+// Set regular user session (not impersonation)
 export const setUserSessionInCurrentTab = (token: string): void => {
-  localStorage.setItem(AUTH_KEYS.USER_TOKEN, token); // Store in localStorage (shared)
-  setTabSession('user'); // This tab identifies as user
-};
-
-// Check if current tab is superadmin
-export const isSuperadminTab = (): boolean => {
-  return getTabSession() === 'superadmin';
-};
-
-// Check if current tab is user
-export const isUserTab = (): boolean => {
-  return getTabSession() === 'user';
+  localStorage.setItem(AUTH_KEYS.USER_TOKEN, token);
+  setTabSession('user');
 };

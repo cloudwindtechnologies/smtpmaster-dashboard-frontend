@@ -1,116 +1,137 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { jwtVerify } from "jose";
 
-type Role = "superadmin" | "user";
+type OnboardingStep = "statp2" | "statp3" | "statp4" | "statp5" | "statp7" | "dashboard";
 
-// 🔐 Role-based routes
-const SUPERADMIN_ROUTES = [
-  "/email-account-setting",
-  "/user-management",
-  "/change-currency-exchange",
-  "/email-package-config",
-  "/notification",
-];
+const STEP_SEQUENCE: OnboardingStep[] = ["statp2", "statp3", "statp4", "statp5", "statp7", "dashboard"];
 
-const SHARED_ROUTES = [
-  "/",
-  "/email-logs",
-  "/my-account",
-  "/support-ticket",
-];
+const STEP_TO_ROUTE: Record<OnboardingStep, string> = {
+  statp2: "/signup/step-2",
+  statp3: "/signup/step-3",
+  statp4: "/signup/step-4",
+  statp5: "/signup/step-5",
+  statp7: "/signup/step-7",
+  dashboard: "/",
+};
 
-// ✅ Match helper
-function matchAny(pathname: string, routes: string[]) {
-  return routes.some((r) => pathname === r || pathname.startsWith(`${r}/`));
+const AUTH_PAGES = ["/login", "/signup"];
+const PUBLIC_ROUTES = ["/login", "/signup", "/forgot_password", "/unauthorized"];
+const PUBLIC_PREFIXES = ["/_next", "/images", "/api/auth/login", "/api/auth/register"];
+
+function isPublicRoute(pathname: string) {
+  if (PUBLIC_ROUTES.includes(pathname)) return true;
+  if (pathname === "/favicon.ico") return true;
+  if (pathname === "/Logoicon.png") return true;
+  return PUBLIC_PREFIXES.some((route) => pathname.startsWith(route));
 }
 
-// ✅ Edge-safe base64url JWT decode
-function decodeJwtPayload(token: string): any | null {
+async function verifyJWT(token: string): Promise<any | null> {
   try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
+    const secretValue = process.env.JWT_SECRET_KEY;
+    if (!secretValue) {
+      console.error("[Middleware] JWT_SECRET_KEY missing");
+      return null;
+    }
 
-    const base64Url = parts[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-
-    const raw = atob(base64);
-
-    const json = decodeURIComponent(
-      raw
-        .split("")
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join("")
-    );
-
-    return JSON.parse(json);
-  } catch {
+    const secret = new TextEncoder().encode(secretValue);
+    const { payload } = await jwtVerify(token, secret);
+    return payload;
+  } catch (error: any) {
+    console.error("[Middleware] JWT verify failed:", error.message);
     return null;
   }
 }
 
-function isTokenExpired(token: string): boolean {
-  const decoded = decodeJwtPayload(token);
-  if (!decoded?.exp) return true;
-  const currentTime = Math.floor(Date.now() / 1000);
-  return decoded.exp < currentTime;
-}
+export async function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+  const token = request.cookies.get("token")?.value;
 
-export function middleware(req: NextRequest) {
-  const { pathname, search } = req.nextUrl;
+  // If no token, allow public routes
+  if (!token) {
+    if (isPublicRoute(pathname)) {
+      return NextResponse.next();
+    }
 
-  // ✅ Public routes
-  if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/signup") ||
-    pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico" ||
-    pathname.startsWith("/api") ||
-    pathname.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)$/)
-  ) {
-    return NextResponse.next();
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = "";
+
+    if (pathname !== "/") {
+      url.searchParams.set("redirect", `${pathname}${search}`);
+    }
+
+    return NextResponse.redirect(url);
   }
 
-  // ✅ Read cookies
-  const token = req.cookies.get("token")?.value;
-  const role = req.cookies.get("role")?.value as Role | undefined;
+  // Token exists, verify it
+  const decoded = await verifyJWT(token);
 
-  // ❌ Missing or expired token
-  if (!token || !role || isTokenExpired(token)) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-
-    // ✅ save current page so user returns here after login
-    url.searchParams.set("redirect", `${pathname}${search}`);
-
-    const response = NextResponse.redirect(url);
+  if (!decoded) {
+    const response = NextResponse.redirect(new URL("/login?error=invalid_session", request.url));
     response.cookies.delete("token");
-    response.cookies.delete("role");
     return response;
   }
 
-  // 🔐 Superadmin-only
-  if (matchAny(pathname, SUPERADMIN_ROUTES)) {
-    if (role !== "superadmin") {
-      const url = req.nextUrl.clone();
-      url.pathname = "/unauthorized";
-      url.search = "";
-      return NextResponse.redirect(url);
+  const roleId = Number(decoded?.data?.login_user_role_id);
+  const wheretogo = (decoded?.data?.wheretogo as OnboardingStep) || "statp2";
+
+  // Prevent logged-in users from opening login/signup pages
+  if (AUTH_PAGES.includes(pathname)) {
+    if (roleId === 1) {
+      return NextResponse.redirect(new URL("/", request.url));
     }
+
+    return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
   }
 
-  // 🔐 Shared routes
-  if (matchAny(pathname, SHARED_ROUTES)) {
-    if (role !== "superadmin" && role !== "user") {
-      const url = req.nextUrl.clone();
-      url.pathname = "/unauthorized";
-      url.search = "";
-      return NextResponse.redirect(url);
+  // Other public routes like forgot_password can still open if you want
+  if (isPublicRoute(pathname)) {
+    return NextResponse.next();
+  }
+
+  if (roleId === 1) {
+    return NextResponse.next();
+  }
+
+  const currentStepIndex = STEP_SEQUENCE.indexOf(wheretogo);
+
+  if (currentStepIndex === -1) {
+    return NextResponse.redirect(new URL("/login?error=invalid_payload", request.url));
+  }
+
+  if (pathname === "/") {
+    if (wheretogo !== "dashboard") {
+      return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
     }
+    return NextResponse.next();
+  }
+
+  const stepMatch = pathname.match(/^\/signup\/step-(\d+)$/);
+
+  if (stepMatch) {
+    const requestedStep = Number(stepMatch[1]);
+    const stepKey = `statp${requestedStep}` as OnboardingStep;
+    const requestedIndex = STEP_SEQUENCE.indexOf(stepKey);
+
+    if (requestedIndex === -1) {
+      return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
+    }
+
+    if (requestedIndex > currentStepIndex) {
+      return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
+    }
+
+    return NextResponse.next();
+  }
+
+  if (wheretogo !== "dashboard") {
+    return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

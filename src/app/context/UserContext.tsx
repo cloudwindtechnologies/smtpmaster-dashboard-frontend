@@ -1,7 +1,7 @@
 "use client";
 
 import { token } from "@/components/app_component/common/http";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 export type User = {
@@ -27,19 +27,26 @@ type UserContextType = {
   loading: boolean;
   refreshUser: () => Promise<void>;
   startLoading: () => void;
-  clearUser: () => void; // ✅ new
+  clearUser: () => void;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const route = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const publicRoutes = ["/login", "/signup", "/forgot-password"];
+  const isPublicRoute =
+    publicRoutes.includes(pathname) ||
+    pathname.startsWith("/signup/");
 
   const startLoading = () => {
     setLoading(true);
-    setUser(null); // ✅ important: remove old username immediately
+    setUser(null);
   };
 
   const clearUser = () => {
@@ -48,15 +55,32 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const fetchUser = async () => {
-    setLoading(true); // ✅ always show loading during refetch
+    const authToken = token();
+
+    if (!authToken) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
     try {
       const res = await fetch("/api/auth/profileMe", {
         headers: {
-          Authorization: `Bearer ${token()}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
-   
+      if (!res.ok) {
+        setUser(null);
+
+        // only redirect on protected pages
+        if (!isPublicRoute) {
+          router.push("/login");
+        }
+        return;
+      }
 
       const data = await res.json();
       setUser(data.data ?? null);
@@ -69,22 +93,34 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
+    if (isPublicRoute) {
+      setLoading(false);
+      return;
+    }
+
     fetchUser();
 
-    // Listen for login events to refresh user data
     const handleUserLogin = () => {
       fetchUser();
     };
 
-    window.addEventListener('user-login', handleUserLogin);
+    window.addEventListener("user-login", handleUserLogin);
 
     return () => {
-      window.removeEventListener('user-login', handleUserLogin);
+      window.removeEventListener("user-login", handleUserLogin);
     };
-  }, []);
+  }, [pathname]);
 
   return (
-    <UserContext.Provider value={{ user, loading, refreshUser: fetchUser, startLoading, clearUser }}>
+    <UserContext.Provider
+      value={{
+        user,
+        loading,
+        refreshUser: fetchUser,
+        startLoading,
+        clearUser,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );

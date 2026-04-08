@@ -1,20 +1,102 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Contact, ShoppingCart, Loader2 } from "lucide-react";
+import { Users, Contact, ShoppingCart, Loader2, ArrowLeft } from "lucide-react";
+import Image from "next/image";
+import { showToast } from "@/components/app_component/common/toastHelper";
+import { token as getToken } from "@/components/app_component/common/http";
 
 type FormState = {
-  hmpiyt: string; // stored as string in UI
-  hmcdh: string;  // stored as string in UI
+  hmpiyt: string;
+  hmcdh: string;
   sellonline: boolean | null;
 };
 
+function getDisplayValue(range: string, storedValue: string) {
+  if (!storedValue) return "";
+  
+  // Handle the 51+ case
+  if (storedValue === "51") return "51+";
+  if (storedValue === "5000") return "5000+";
+  
+  // For ranges like 0-1, 2-10, 11-50
+  if (range.includes("-")) {
+    const parts = range.split("-");
+    if (parts[1] === storedValue) return range;
+  }
+  
+  // Try to find matching range based on stored max value
+  const ranges = {
+    "0-1": "1",
+    "2-10": "10",
+    "11-50": "50",
+    "51+": "51",
+    "1-300": "300",
+    "301-1000": "1000",
+    "1001-5000": "5000",
+    "5000+": "5000"
+  };
+  
+  for (const [key, value] of Object.entries(ranges)) {
+    if (value === storedValue) return key;
+  }
+  
+  return "";
+}
+
 function getMaxValue(range: string) {
   if (!range) return "";
-  if (range.includes("+")) return range.replace("+", "");
-  const parts = range.split("-");
-  return parts[1] || "";
+  if (range === "51+") return "51";
+  if (range === "5000+") return "5000";
+  if (range.includes("-")) {
+    const parts = range.split("-");
+    return parts[1] || "";
+  }
+  return "";
+}
+
+function setPendingRedirect(path: string | null) {
+  if (typeof window === "undefined") return;
+  if (!path) return;
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  if (path === "/signup" || path.startsWith("/signup")) return;
+
+  sessionStorage.setItem("pending_redirect", path);
+}
+
+function getPendingRedirect() {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("pending_redirect");
+}
+
+// Function to update user stage - calls backend to calculate and get fresh JWT
+async function updateUserStage() {
+  try {
+    const response = await fetch("/api/auth/update-stage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (data.token) {
+        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem("token", data.token);
+        return data.wheretogo;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to update stage:", error);
+    return null;
+  }
 }
 
 export default function OtherInfoPage() {
@@ -30,6 +112,15 @@ export default function OtherInfoPage() {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get("redirect");
+
+    if (redirect) {
+      setPendingRedirect(redirect);
+    }
+  }, []);
 
   const payload = useMemo(() => {
     return {
@@ -69,9 +160,20 @@ export default function OtherInfoPage() {
       if (!res.ok || data?.success === false) {
         throw new Error(data?.message || "Something went wrong");
       }
-
+      
+      showToast("success", data?.message || "Saved successfully!");
       setSuccessMsg(data?.message || "Saved successfully!");
-      router.replace("/signup/step-7");
+
+      // Call updateStage to get fresh JWT with calculated wheretogo
+      await updateUserStage();
+
+      const pendingRedirect = getPendingRedirect();
+      setTimeout(() => {
+      if (pendingRedirect) {
+        window.location.href = `/signup/step-7?redirect=${encodeURIComponent(pendingRedirect)}`;
+      } else {
+        window.location.href = "/signup/step-7";
+      }},100);
     } catch (err: any) {
       setApiError(err?.message || "Failed to save");
     } finally {
@@ -79,157 +181,179 @@ export default function OtherInfoPage() {
     }
   };
 
+  const handelback = () => {
+    const pendingRedirect = getPendingRedirect();
+
+     if (pendingRedirect) {
+          window.location.href = `/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`;
+        } else {
+          window.location.href = "/signup/step-4";
+        }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-8">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50">
-            <Users className="h-6 w-6 text-blue-600" />
+    <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+      <div className="mx-auto max-w-xl">
+        <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+          <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                <Image 
+                  src="/Logoicon.png" 
+                  alt="SMTPMaster Logo" 
+                  width={28} 
+                  height={28} 
+                  className="object-contain"
+                />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-white sm:text-xl">
+                  Business Information
+                </h1>
+                <p className="text-sm text-white/90">
+                  Step 5 of 7: Tell us about your business
+                </p>
+              </div>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">A few more details</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            This helps us personalize your SMTPMaster setup.
-          </p>
+
+          <div className="p-5 sm:p-6">
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">A few more details</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                This helps us personalize your SMTPMaster setup.
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  How many people are in your team? <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <select
+                    value={getDisplayValue("", form.hmpiyt)}
+                    onChange={(e) => {
+                      const selectedValue = e.target.value;
+                      const max = getMaxValue(selectedValue);
+                      setForm((p) => ({ ...p, hmpiyt: max }));
+                      setErrors((p) => ({ ...p, hmpiyt: "" }));
+                    }}
+                    className={`h-11 w-full rounded-xl border bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 ${
+                      errors.hmpiyt ? "border-red-500" : "border-gray-200"
+                    }`}
+                    disabled={loading}
+                  >
+                    <option value="">Select team size</option>
+                    <option value="0-1">0–1 employee</option>
+                    <option value="2-10">2–10 employees</option>
+                    <option value="11-50">11–50 employees</option>
+                    <option value="51+">51+ employees</option>
+                  </select>
+                </div>
+                {errors.hmpiyt && <p className="mt-1 text-xs text-red-500">{errors.hmpiyt}</p>}
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  How many contacts do you have? <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Contact className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <select
+                    value={getDisplayValue("", form.hmcdh)}
+                    onChange={(e) => {
+                      const selectedValue = e.target.value;
+                      const max = getMaxValue(selectedValue);
+                      setForm((p) => ({ ...p, hmcdh: max }));
+                      setErrors((p) => ({ ...p, hmcdh: "" }));
+                    }}
+                    className={`h-11 w-full rounded-xl border bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 ${
+                      errors.hmcdh ? "border-red-500" : "border-gray-200"
+                    }`}
+                    disabled={loading}
+                  >
+                    <option value="">Select contact range</option>
+                    <option value="1-300">1–300 contacts</option>
+                    <option value="301-1000">301–1000 contacts</option>
+                    <option value="1001-5000">1001–5000 contacts</option>
+                    <option value="5000+">5000+ contacts</option>
+                  </select>
+                </div>
+                {errors.hmcdh && <p className="mt-1 text-xs text-red-500">{errors.hmcdh}</p>}
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Do you sell online? <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((p) => ({ ...p, sellonline: true }));
+                      setErrors((p) => ({ ...p, sellonline: "" }));
+                    }}
+                    className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-semibold transition ${
+                      form.sellonline === true
+                        ? "border-[#ff7800] bg-[#fff4ec] text-[#ff7800]"
+                        : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                    }`}
+                    disabled={loading}
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Yes
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((p) => ({ ...p, sellonline: false }));
+                      setErrors((p) => ({ ...p, sellonline: "" }));
+                    }}
+                    className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-semibold transition ${
+                      form.sellonline === false
+                        ? "border-[#ff7800] bg-[#fff4ec] text-[#ff7800]"
+                        : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                    }`}
+                    disabled={loading}
+                  >
+                    No
+                  </button>
+                </div>
+                {errors.sellonline && <p className="mt-1 text-xs text-red-500">{errors.sellonline}</p>}
+              </div>
+
+              {apiError && (
+                <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {apiError}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handelback}
+                  disabled={loading}
+                  className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Previous
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:opacity-60"
+                >
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {loading ? "Saving..." : "Update & Continue"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Team size */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              How many people are in your team? <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <select
-                value={form.hmpiyt ? `0-${form.hmpiyt}` : ""}
-                onChange={(e) => {
-                  const max = getMaxValue(e.target.value);
-                  setForm((p) => ({ ...p, hmpiyt: max }));
-                  setErrors((p) => ({ ...p, hmpiyt: "" }));
-                }}
-                className={`w-full rounded-lg border px-3 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.hmpiyt ? "border-red-500" : "border-gray-300"
-                }`}
-                disabled={loading}
-              >
-                <option value="">Select</option>
-                <option value="0-1">0–1 employee</option>
-                <option value="2-10">2–10 employees</option>
-                <option value="11-50">11–50 employees</option>
-                <option value="51+">51+ employees</option>
-              </select>
-            </div>
-            {errors.hmpiyt && <p className="mt-1 text-xs text-red-600">{errors.hmpiyt}</p>}
-          </div>
-
-          {/* Contacts size */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              How many contacts do you have? <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Contact className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <select
-                value={form.hmcdh ? `0-${form.hmcdh}` : ""}
-                onChange={(e) => {
-                  const max = getMaxValue(e.target.value);
-                  setForm((p) => ({ ...p, hmcdh: max }));
-                  setErrors((p) => ({ ...p, hmcdh: "" }));
-                }}
-                className={`w-full rounded-lg border px-3 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.hmcdh ? "border-red-500" : "border-gray-300"
-                }`}
-                disabled={loading}
-              >
-                <option value="">Select</option>
-                <option value="1-300">1–300</option>
-                <option value="301-1000">301–1000</option>
-                <option value="1001-5000">1001–5000</option>
-                <option value="5000+">5000+</option>
-              </select>
-            </div>
-            {errors.hmcdh && <p className="mt-1 text-xs text-red-600">{errors.hmcdh}</p>}
-          </div>
-
-          {/* Sell online */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Do you sell online? <span className="text-red-500">*</span>
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setForm((p) => ({ ...p, sellonline: true }));
-                  setErrors((p) => ({ ...p, sellonline: "" }));
-                }}
-                className={[
-                  "rounded-lg border px-4 py-2.5 text-sm font-semibold transition inline-flex items-center justify-center gap-2",
-                  form.sellonline === true
-                    ? "border-blue-600 bg-blue-50 text-blue-700"
-                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50",
-                ].join(" ")}
-                disabled={loading}
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Yes
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setForm((p) => ({ ...p, sellonline: false }));
-                  setErrors((p) => ({ ...p, sellonline: "" }));
-                }}
-                className={[
-                  "rounded-lg border px-4 py-2.5 text-sm font-semibold transition inline-flex items-center justify-center gap-2",
-                  form.sellonline === false
-                    ? "border-blue-600 bg-blue-50 text-blue-700"
-                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50",
-                ].join(" ")}
-                disabled={loading}
-              >
-                No
-              </button>
-            </div>
-
-            {errors.sellonline && <p className="mt-1 text-xs text-red-600">{errors.sellonline}</p>}
-          </div>
-
-          {/* API messages */}
-          {apiError && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-              {apiError}
-            </div>
-          )}
-          {successMsg && (
-            <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-              {successMsg}
-            </div>
-          )}
-
-          {/* Buttons */}
-          <div className="flex items-center justify-between pt-2">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              disabled={loading}
-              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-            >
-              Previous
-            </button>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition disabled:opacity-60"
-            >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {loading ? "Saving..." : "Update & Continue"}
-            </button>
-          </div>
-        </form>
 
         <div className="mt-6 text-center text-sm text-gray-500">
           © {new Date().getFullYear()} SMTPMaster. All rights reserved.

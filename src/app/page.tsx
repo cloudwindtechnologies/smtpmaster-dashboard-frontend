@@ -49,35 +49,68 @@ export default function Home() {
 
   //   return () => clearTimeout(timer);
   // }, [router, sessionChecked]);
-    useEffect(() => {
-      const timer = setTimeout(() => {
-      // Determine what type of tab this is
-      if (isUserTab()) {
-        setTabType('user');
-        const userToken = localStorage.getItem(AUTH_KEYS.USER_TOKEN);
+useEffect(() => {
+  let bc: BroadcastChannel | null = null;
+  let tokenReceived = false;
+
+  // ✅ METHOD 1: Listen for BroadcastChannel (fastest, production preferred)
+  if ('BroadcastChannel' in window) {
+    bc = new BroadcastChannel('impersonate_channel');
+    bc.onmessage = (event) => {
+      const data = event.data;
+      if (data?.token && Date.now() - data.timestamp < 10000) { // 10s expiry
+        sessionStorage.setItem('impersonate_token', data.token);
+        sessionStorage.setItem('tab_session', 'user');
+        if (data.wheretogo) sessionStorage.setItem('wheretogo', data.wheretogo);
+        tokenReceived = true;
         
-        if (!userToken) {
-          router.push("/login");
-          return;
+        // Clean URL if fallback was also present
+        if (window.location.search.includes('impersonate=')) {
+          window.history.replaceState({}, '', window.location.pathname);
         }
-        setRole('user');
-      } else {
-        setTabType('superadmin');
-        const superadminToken = localStorage.getItem(AUTH_KEYS.SUPERADMIN_TOKEN) || localStorage.getItem("token");
-        const storedRole = localStorage.getItem("role");
-
-        if (!superadminToken || !storedRole) {
-          router.push("/login");
-          return;
-        }
-        setRole(storedRole);
       }
-    }, 100);
+    };
+  }
 
-    // Cleanup the timer if the component unmounts
-    return () => clearTimeout(timer);
-    }, [router]);
+  // ✅ METHOD 2: URL Fallback (for BC unsupported browsers)
+  const params = new URLSearchParams(window.location.search);
+  const impersonateParam = params.get('impersonate');
+  
+  if (!tokenReceived && impersonateParam) {
+    try {
+      const data = JSON.parse(atob(impersonateParam));
+      if (Date.now() - data.timestamp < 10000) { // 10s expiry check
+        sessionStorage.setItem('impersonate_token', data.token);
+        sessionStorage.setItem('tab_session', 'user');
+        window.history.replaceState({}, '', window.location.pathname); // Clean URL immediately
+      }
+    } catch (e) {
+      console.error('Invalid impersonate data');
+    }
+  }
 
+  // Determine tab type
+  const timer = setTimeout(() => {
+    if (isUserTab()) {
+      setTabType('user');
+      setRole('user');
+    } else {
+      setTabType('superadmin');
+      const superadminToken = localStorage.getItem(AUTH_KEYS.SUPERADMIN_TOKEN) || localStorage.getItem("token");
+      const storedRole = localStorage.getItem("role");
+      if (!superadminToken || !storedRole) {
+        router.push("/login");
+        return;
+      }
+      setRole(storedRole);
+    }
+  }, 50); // Reduced delay since BC is instant
+
+  return () => {
+    clearTimeout(timer);
+    bc?.close();
+  };
+}, [router]);
 
   // Show loading while user data is being fetched
   if (userLoading) {
@@ -91,8 +124,7 @@ export default function Home() {
             <Header />
             <main className="flex-1 p-4 lg:p-6 flex items-center justify-center">
               <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-                <p className="mt-2 text-sm text-muted-foreground">Loading your dashboard...</p>
+                
               </div>
             </main>
           </div>

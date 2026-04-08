@@ -1,7 +1,6 @@
 import Header from '@/components/app_component/common/header'
 import SidebarNav from '@/components/app_component/common/sidebar'
-import UserInfo from '@/components/app_component/user/domain-info/domain-info-component'
-
+import DomainInfo from '@/components/app_component/user/domain-info/domain-info-component'
 
 export default function Page() {
   return (
@@ -15,7 +14,7 @@ export default function Page() {
          <div className="flex-1 overflow-y-auto">
            <Header/>
            <main className="flex-1 p-4 lg:p-6">
-           <UserInfo/>
+           <DomainInfo/>
          </main>
          </div>
          

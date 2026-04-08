@@ -4,11 +4,8 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json(); // { email, password }
+    const body = await req.json();
 
-
-    // ✅ Call YOUR backend login API
-    // Change this endpoint to your real backend login route
     const r = await fetch(`${apiURL}/api/v1/login`, {
       method: "POST",
       headers: {
@@ -20,8 +17,6 @@ export async function POST(req: Request) {
 
     const text = await r.text();
     
-    
-    // backend must return JSON, but sometimes it returns HTML error page
     let data: any;
     try {
       data = JSON.parse(text);
@@ -31,42 +26,32 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
-    console.log(data);
     
-    // ✅ Expected backend response:
-    // { success: true, token: "...", role: "admin"|"user" }
     if (!data?.success || !data?.token || !data?.role) {
       return NextResponse.json(
-        { success: false, message: data?.message || "Invalid login response from backend", data },
+        { success: false, message: data?.error || "Invalid login response from backend", data },
         { status: 401 }
       );
     }
-    return NextResponse.json({
-      token: data.token || data.access_token,
-      role: data.role || data.user?.role,
+
+    // ✅ SINGLE RESPONSE with HTTP-only cookie
+    const response = NextResponse.json({
+      success: true,
+      message: data?.message || "Login successful",
+      token: data.token,
+      role: data.role,
       wheretogo: data.wheretogo,
-      success:data?.success
     });
-    // ✅ Set secure httpOnly cookies
-    // const res = NextResponse.json({ success: true, role: data.role });
 
-    // res.cookies.set("auth_token", data.token, {
-    //   httpOnly: true,
-    //   secure: process.env.NODE_ENV === "production",
-    //   sameSite: "lax",
-    //   path: "/",
-    //   maxAge: 60 * 60 * 24 * 7, // 7 days
-    // });
+    response.cookies.set("token", data.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
 
-    // res.cookies.set("role", data.role, {
-    //   httpOnly: true, // keep it safe too
-    //   secure: process.env.NODE_ENV === "production",
-    //   sameSite: "lax",
-    //   path: "/",
-    //   maxAge: 60 * 60 * 24 * 7,
-    // });
-
-    // return res;
+    return response; // ✅ Now we actually return it!
 
   } catch (e: any) {
     return NextResponse.json({ success: false, message: e?.message || "Server error" }, { status: 500 });

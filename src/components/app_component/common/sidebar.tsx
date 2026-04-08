@@ -57,7 +57,7 @@ export default function SidebarNav({ isMobile = false }: SidebarNavProps) {
     { icon: <OctagonAlert strokeWidth={2} className="h-5 w-5" />, label: "Spam Report", href: "/spam-report" },
 
     // ✅ RENAMED: Package Info → My Plans
-    { icon: <CreditCard className="h-5 w-5" />, label: "My Plans", href: "/package-info" },
+    { icon: <CreditCard className="h-5 w-5" />, label: "My Plans", href: "/my-plans" },
     
     // ✅ RENAMED & MOVED: Order History (was after All Packages)
     { icon: <History className="h-5 w-5" />, label: "Order History", href: "/order-history" },
@@ -149,12 +149,12 @@ export default function SidebarNav({ isMobile = false }: SidebarNavProps) {
         </ul>
       </nav>
 
-      <div className="flex items-center justify-between border-t border-border p-2 text-xs text-muted-foreground">
+      {/* <div className="flex items-center justify-between border-t border-border p-2 text-xs text-muted-foreground">
         <button onClick={toggleTheme} className="rounded-md p-1 hover:bg-accent" aria-label="Toggle theme">
           {theme === "dark" ? <Moon className="h-3 w-3" /> : <Sun className="h-3 w-3" />}
         </button>
         <span>GMT+5</span>
-      </div>
+      </div> */}
 
       {/* {!isMobile && (
         <div className="border-t border-border p-4">
@@ -182,19 +182,20 @@ export default function SidebarNav({ isMobile = false }: SidebarNavProps) {
 
   return (
     <div className="flex h-full w-64 flex-col border-r border-border bg-card">
-      <div className="flex items-center justify-center px-4 py-3 mt-3 h-16">
+      <div className="flex items-center justify-center px-4 py-3 mt-3 mb-[-0.5rem] h-16">
         <Link href="/">
-          <Image
-            src="/smtplogo.jpg"
-            alt="SMTP Master"
-            width={120}
-            height={32}
-            className="w-auto object-contain"
-            priority
-            unoptimized
-          />
+            <Image
+              src="/LoginLogo.png"
+              alt="SMTP Master"
+              width={120}
+              height={32}
+              className="w-[13rem] object-contain"
+              priority
+              unoptimized
+            />
         </Link>
       </div>
+       
       {content}
     </div>
   );
