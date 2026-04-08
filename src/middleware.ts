@@ -67,14 +67,12 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const token = request.cookies.get("token")?.value;
 
-  // 1) No token
+  // no token
   if (!token) {
-    // allow public pages
     if (isPublicRoute(pathname)) {
       return NextResponse.next();
     }
 
-    // everything else goes to login
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -86,17 +84,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // 2) Token exists -> verify
   const decoded = await verifyJWT(token);
 
-  // invalid token -> clear cookie and allow login page only
   if (!decoded) {
-    if (AUTH_PAGES.includes(pathname)) {
-      const response = NextResponse.next();
-      response.cookies.delete("token");
-      return response;
-    }
-
     const response = NextResponse.redirect(new URL("/login?error=invalid_session", request.url));
     response.cookies.delete("token");
     return response;
@@ -105,21 +95,15 @@ export async function middleware(request: NextRequest) {
   const roleId = Number(decoded?.data?.login_user_role_id);
   const wheretogo = (decoded?.data?.wheretogo as OnboardingStep) || "statp2";
 
-  // 3) Logged in user should not access login/signup
+  // let /login and /signup render normally
   if (AUTH_PAGES.includes(pathname)) {
-    if (roleId === 1) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-
-    return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
+    return NextResponse.next();
   }
 
-  // 4) Other public routes allowed
   if (isPublicRoute(pathname)) {
     return NextResponse.next();
   }
 
-  // 5) Superadmin bypass
   if (roleId === 1) {
     return NextResponse.next();
   }
@@ -132,7 +116,6 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // 6) Root route
   if (pathname === "/") {
     if (wheretogo !== "dashboard") {
       return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
@@ -140,7 +123,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 7) Signup step route
   const stepMatch = pathname.match(/^\/signup\/step-(\d+)$/);
 
   if (stepMatch) {
@@ -159,7 +141,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 8) Block protected routes until onboarding complete
   if (wheretogo !== "dashboard") {
     return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
   }
