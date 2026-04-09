@@ -28,14 +28,21 @@ const STEP_TO_ROUTE: Record<OnboardingStep, string> = {
   dashboard: "/",
 };
 
-const AUTH_PAGES = ["/login", "/signup"];
-const PUBLIC_ROUTES = ["/login", "/signup", "/forgot_password", "/unauthorized"];
+const PUBLIC_ROUTES = ["/login", "/signup", "/forgot_password", "/forgot-password", "/unauthorized"];
 const PUBLIC_PREFIXES = [
   "/_next",
   "/images",
   "/api/auth/login",
   "/api/auth/register",
   "/api/auth/logout",
+];
+const ADMIN_ROUTE_PREFIXES = [
+  "/add-notification",
+  "/change-currency-exchange",
+  "/coupons",
+  "/email-account-setting",
+  "/email-package-config",
+  "/user-management",
 ];
 
 function isPublicRoute(pathname: string) {
@@ -61,6 +68,16 @@ async function verifyJWT(token: string): Promise<any | null> {
     console.error("[Middleware] JWT verify failed:", error.message);
     return null;
   }
+}
+
+function isAuthEntryRoute(pathname: string) {
+  return pathname === "/login" || pathname === "/signup";
+}
+
+function isAdminRoute(pathname: string) {
+  return ADMIN_ROUTE_PREFIXES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
 }
 
 export async function middleware(request: NextRequest) {
@@ -94,17 +111,26 @@ export async function middleware(request: NextRequest) {
 
   const roleId = Number(decoded?.data?.login_user_role_id);
   const wheretogo = (decoded?.data?.wheretogo as OnboardingStep) || "statp2";
+  const adminRoute = isAdminRoute(pathname);
+  const authEntryRoute = isAuthEntryRoute(pathname);
 
-  // let /login and /signup render normally
-  if (AUTH_PAGES.includes(pathname)) {
+  if (roleId === 1) {
+    if (authEntryRoute || pathname.startsWith("/signup")) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
     return NextResponse.next();
+  }
+
+  if (adminRoute) {
+    return NextResponse.redirect(new URL("/unauthorized", request.url));
+  }
+
+  if (authEntryRoute) {
+    return NextResponse.redirect(new URL(STEP_TO_ROUTE[wheretogo], request.url));
   }
 
   if (isPublicRoute(pathname)) {
-    return NextResponse.next();
-  }
-
-  if (roleId === 1) {
     return NextResponse.next();
   }
 

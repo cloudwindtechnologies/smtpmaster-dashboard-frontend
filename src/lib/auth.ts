@@ -5,6 +5,23 @@ export const AUTH_KEYS = {
   IMPERSONATE_TOKEN: 'impersonate_token', // Tab-specific impersonation token
 };
 
+export const normalizeRole = (role: string | number | null | undefined): string | null => {
+  if (role === null || role === undefined) return null;
+
+  const normalized = String(role).trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized === "superadmin" || normalized === "admin" || normalized === "1") {
+    return "superadmin";
+  }
+
+  return "user";
+};
+
+export const isSuperadminRole = (role: string | number | null | undefined): boolean => {
+  return normalizeRole(role) === "superadmin";
+};
+
 // Store tab-specific session type in sessionStorage
 export const getTabSession = (): 'superadmin' | 'user' => {
   if (typeof window === 'undefined') return 'superadmin';
@@ -71,7 +88,7 @@ export const setSuperadminSession = (token: string, role: string): void => {
   localStorage.setItem(AUTH_KEYS.SUPERADMIN_TOKEN, token);
   localStorage.setItem(AUTH_KEYS.SUPERADMIN_ROLE, role);
   localStorage.setItem('token', token);
-  localStorage.setItem('role', role);
+  localStorage.setItem('role', normalizeRole(role) || role);
   setTabSession('superadmin');
 };
 

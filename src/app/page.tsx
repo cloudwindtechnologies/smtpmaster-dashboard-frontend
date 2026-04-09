@@ -8,7 +8,7 @@ import DashboardPage from "@/components/app_component/user/dashboard/dashboard_c
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { isSuperadminTab, isUserTab, getToken, AUTH_KEYS } from "@/lib/auth";
+import { isSuperadminRole, isUserTab, normalizeRole, AUTH_KEYS } from "@/lib/auth";
 import { SessionInitializer } from "./user-session-loader";
 import { useUser } from "@/app/context/UserContext";
 import { Loader2 } from "lucide-react";
@@ -97,7 +97,7 @@ useEffect(() => {
     } else {
       setTabType('superadmin');
       const superadminToken = localStorage.getItem(AUTH_KEYS.SUPERADMIN_TOKEN) || localStorage.getItem("token");
-      const storedRole = localStorage.getItem("role");
+      const storedRole = normalizeRole(localStorage.getItem(AUTH_KEYS.SUPERADMIN_ROLE));
       if (!superadminToken || !storedRole) {
         router.push("/login");
         return;
@@ -118,7 +118,7 @@ useEffect(() => {
       <SessionInitializer>
         <div className="bg-gray-100 lg:flex h-screen">
           <div className="hidden lg:block flex-none">
-            {role === 'superadmin' ? <SuperAdminSidebar /> : <SidebarNav />}
+            {isSuperadminRole(role) ? <SuperAdminSidebar /> : <SidebarNav />}
           </div>
           <div className="flex-1 overflow-y-auto">
             <Header />
@@ -138,13 +138,13 @@ useEffect(() => {
       <div className="bg-gray-100 lg:flex h-screen">
         <div className="hidden lg:block flex-none">
           {/* Show SuperAdminSidebar only for superadmin role */}
-          {role === 'superadmin' ? <SuperAdminSidebar /> : <SidebarNav />}
+          {isSuperadminRole(role) ? <SuperAdminSidebar /> : <SidebarNav />}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <Header />
           <main className="flex-1 p-4 lg:p-6">
-            {role === 'superadmin' ? <SuperAdminDashboardPage /> : <DashboardPage />}
+            {isSuperadminRole(role) ? <SuperAdminDashboardPage /> : <DashboardPage />}
           </main>
         </div>
       </div>

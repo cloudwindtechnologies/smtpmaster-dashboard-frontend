@@ -155,7 +155,7 @@ export default function SuperAdminSidebar({ isMobile = false }: SidebarNavProps)
       { 
         icon: <Bell className="h-5 w-5" />, 
         label: "Notification", 
-        href: "/notification" 
+        href: "/add-notification" 
       },
 
       { icon: <Key className="h-5 w-5" />, label: "Support Ticket", href: "https://smtpmaster.tawk.help/" },
