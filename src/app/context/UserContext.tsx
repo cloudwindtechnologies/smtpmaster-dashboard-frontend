@@ -39,7 +39,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
 
-  const publicRoutes = ["/login", "/signup", "/forgot-password"];
+  const publicRoutes = ["/login", "/signup", "/forgot-password", "/forgot_password", "/unauthorized"];
   const isPublicRoute =
     publicRoutes.includes(pathname) ||
     pathname.startsWith("/signup/");
@@ -73,16 +73,36 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       });
 
       if (!res.ok) {
+        const bootstrapping = sessionStorage.getItem("auth_bootstrapping") === "1";
+
+        if (bootstrapping) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+
+          const retryRes = await fetch("/api/auth/profileMe", {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            sessionStorage.removeItem("auth_bootstrapping");
+            setUser(retryData.data ?? null);
+            return;
+          }
+        }
+
+        sessionStorage.removeItem("auth_bootstrapping");
         setUser(null);
 
-        // only redirect on protected pages
-        if (!isPublicRoute ) {
+        if (!isPublicRoute) {
           router.push("/login");
         }
         return;
       }
 
       const data = await res.json();
+      sessionStorage.removeItem("auth_bootstrapping");
       setUser(data.data ?? null);
     } catch (err) {
       console.error("Failed to load user", err);

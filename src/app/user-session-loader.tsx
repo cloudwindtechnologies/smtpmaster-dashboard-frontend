@@ -63,7 +63,7 @@
 
 import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { setUserSessionInCurrentTab, setTabSession } from "@/lib/auth";
+import { normalizeRole, setUserSessionInCurrentTab, setTabSession } from "@/lib/auth";
 
 function SessionInitInner() {
   const searchParams = useSearchParams();
@@ -100,7 +100,7 @@ function SessionInitInner() {
       }
     } else {
       const userToken = localStorage.getItem("user_token");
-      const role = localStorage.getItem("role");
+      const role = normalizeRole(localStorage.getItem("role"));
 
       const isUserPage =
         !window.location.pathname.includes("/super-admin") &&

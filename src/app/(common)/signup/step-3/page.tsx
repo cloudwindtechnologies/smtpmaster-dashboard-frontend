@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Globe, Loader2, User } from "lucide-react";
 import { showToast } from "@/components/app_component/common/toastHelper";
@@ -31,6 +30,19 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
+function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
+  const routes: Record<string, string> = {
+    statp2: "/signup/step-2",
+    statp3: "/signup/step-3",
+    statp4: "/signup/step-4",
+    statp5: "/signup/step-5",
+    statp7: "/signup/step-7",
+    dashboard: "/",
+  };
+
+  return routes[wheretogo || ""] || "/";
+}
+
 // Function to update user stage - calls backend to calculate and get fresh JWT
 async function updateUserStage() {
   try {
@@ -44,8 +56,7 @@ async function updateUserStage() {
 
     if (response.ok) {
       const data = await response.json();
-      console.log(data.token);
-      
+
       if (data.token) {
         document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
         localStorage.setItem("token", data.token);
@@ -86,8 +97,6 @@ function saveRedirectFromUrlIfAny() {
 }
 
 export default function ProfileSetupPage() {
-  const router = useRouter();
-
   const [form, setForm] = useState<FormState>({
     first_name: "",
     last_name: "",
@@ -127,6 +136,10 @@ export default function ProfileSetupPage() {
       showToast("error", "Last name is required");
       return false;
     }
+    if (!form.country.trim()) {
+      showToast("error", "Country is required");
+      return false;
+    }
     return true;
   };
 
@@ -155,19 +168,23 @@ export default function ProfileSetupPage() {
       showToast("success", data?.message || "Profile updated successfully!");
 
       // Call updateStage to get fresh JWT with calculated wheretogo
-      await updateUserStage();
+      const wheretogo = await updateUserStage();
 
+      const nextRoute = getRouteFromWhereToGo(wheretogo);
       const pendingRedirect = getPendingRedirect();
 
       setTimeout(() => {
-         if (pendingRedirect) {
-          window.location.href = `/signup/step-4?redirect=${encodeURIComponent(pendingRedirect)}`;
+        if (pendingRedirect && nextRoute !== "/") {
+          window.location.href = `${nextRoute}?redirect=${encodeURIComponent(pendingRedirect)}`;
+        } else if (pendingRedirect) {
+          window.location.href = pendingRedirect;
         } else {
-          window.location.href = "/signup/step-4";
+          window.location.href = nextRoute;
         }
       }, 100);
-    } catch (err: any) {
-      showToast("error", err?.message || "Server error");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Server error";
+      showToast("error", message);
     } finally {
       setLoading(false);
     }
@@ -231,6 +248,24 @@ export default function ProfileSetupPage() {
                     required
                     placeholder="Last name"
                     value={form.last_name}
+                    onChange={handleChange}
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Country <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    name="country"
+                    required
+                    placeholder="Your country"
+                    value={form.country}
                     onChange={handleChange}
                     className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10"
                   />

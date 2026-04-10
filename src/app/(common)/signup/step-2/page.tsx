@@ -23,6 +23,19 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
+function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
+  const routes: Record<string, string> = {
+    statp2: "/signup/step-2",
+    statp3: "/signup/step-3",
+    statp4: "/signup/step-4",
+    statp5: "/signup/step-5",
+    statp7: "/signup/step-7",
+    dashboard: "/",
+  };
+
+  return routes[wheretogo || ""] || "/";
+}
+
 // Function to update user stage - calls backend to calculate and get fresh JWT
 async function updateUserStage() {
   try {
@@ -131,16 +144,18 @@ function VerifyEmailPageInner() {
       }
 
       // IMPORTANT: Call updateStage to get fresh JWT with calculated wheretogo
-      await updateUserStage();
+      const wheretogo = await updateUserStage();
 
-      // After verification, preserve redirect to next step
+      const nextRoute = getRouteFromWhereToGo(wheretogo);
       const pendingRedirect = getPendingRedirect();
 
       setTimeout(() => {
-      if (pendingRedirect) {
-          window.location.href = `/signup/step-3?redirect=${encodeURIComponent(pendingRedirect)}`;
+        if (pendingRedirect && nextRoute !== "/") {
+          window.location.href = `${nextRoute}?redirect=${encodeURIComponent(pendingRedirect)}`;
+        } else if (pendingRedirect) {
+          window.location.href = pendingRedirect;
         } else {
-          window.location.href = "/signup/step-3";
+          window.location.href = nextRoute;
         }
       }, 100);
     } catch (err: any) {

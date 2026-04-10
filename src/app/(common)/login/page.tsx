@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { setSuperadminSession, setTabSession } from "@/lib/auth";
+import { normalizeRole, setSuperadminSession, setTabSession } from "@/lib/auth";
 import { showToast } from "@/components/app_component/common/toastHelper";
 
 type LoginResponse = {
@@ -112,11 +112,12 @@ const onLogin = async (e: React.FormEvent) => {
       showToast("success", data.message || 'login success');
     }
 
-    const role = data.role || "";
+    const role = normalizeRole(data.role) || "";
 
     if (role !== "superadmin") {
       localStorage.setItem("user_token", data.token);
       localStorage.setItem("token", data.token);
+      localStorage.setItem("role", role);
       setTabSession("user");
     } else {
       localStorage.setItem("superadmin_token", data.token);
@@ -125,6 +126,10 @@ const onLogin = async (e: React.FormEvent) => {
     }
 
     localStorage.setItem("gmail", email || "");
+    if (data.wheretogo) {
+      localStorage.setItem("wheretogo", data.wheretogo);
+    }
+    sessionStorage.setItem("auth_bootstrapping", "1");
 
     // ❌ REMOVE THIS LINE - Server sets HTTP-only cookie, not client!
     // document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
@@ -176,7 +181,9 @@ const onLogin = async (e: React.FormEvent) => {
   return (
     
     <div className="h-screen w-screen overflow-hidden bg-[#f4f6fb] flex items-center justify-center">
+      10.04.2026===1:21
       <div className="relative w-[70%] h-full transform scale-[0.8] origin-center">
+        
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-[1180px] h-[110vh] max-h-[900px]">
             <div className="h-full w-full overflow-hidden rounded-[22px] bg-white shadow-[0_16px_50px_rgba(0,0,0,0.10)]">

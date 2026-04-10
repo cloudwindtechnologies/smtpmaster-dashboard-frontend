@@ -14,6 +14,7 @@ import SuperAdminMobileSidebar from "./superAdminMobile";
 import MobileSidebar from "./monile-sidebar";
 import { useUser } from "@/app/context/UserContext";
 import toast from "react-hot-toast";
+import { AUTH_KEYS, isSuperadminRole, normalizeRole } from "@/lib/auth";
 
 // ===== Helpers =====
 const getInitials = (name: string | null): string => {
@@ -88,7 +89,9 @@ export default function Header() {
 
   // Restore admin session
   if (adminToken) {
+    localStorage.setItem(AUTH_KEYS.SUPERADMIN_TOKEN, adminToken);
     localStorage.setItem("token", adminToken);
+    localStorage.setItem(AUTH_KEYS.SUPERADMIN_ROLE, "superadmin");
     localStorage.setItem("role", "superadmin");
   }
 
@@ -127,7 +130,9 @@ export default function Header() {
 
   // ✅ Role + tabType detection (CLIENT-SIDE ONLY)
   useEffect(() => {
-    const roleData = localStorage.getItem("role");
+    const roleData =
+      normalizeRole(localStorage.getItem(AUTH_KEYS.SUPERADMIN_ROLE)) ||
+      normalizeRole(localStorage.getItem("role"));
     setRole(roleData);
 
     checkTabType();
@@ -168,7 +173,7 @@ export default function Header() {
     return (
       <header className="flex items-center justify-between border-b bg-card px-4 py-3 sm:px-6 sm:py-4 sticky top-0 z-40">
         <div className="flex items-center gap-4">
-          {role === "superadmin" ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
+          {isSuperadminRole(role) ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
@@ -200,7 +205,7 @@ export default function Header() {
       <header className="flex items-center justify-between border-b bg-card px-4 py-3 sm:px-6 sm:py-4 sticky top-0 z-40">
         {/* ... keep rest of your header code exactly the same ... */}
         <div className="flex items-center gap-4">
-          {role === "superadmin" ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
+          {isSuperadminRole(role) ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">

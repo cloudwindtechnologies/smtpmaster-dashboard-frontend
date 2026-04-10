@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
-import { apiURL } from "@/components/app_component/common/http";
 import { showToast } from "@/components/app_component/common/toastHelper";
+import { normalizeRole, setTabSession } from "@/lib/auth";
 
 // Helper functions for pending redirect - MOVE THESE OUTSIDE THE COMPONENT
 function setPendingRedirect(path: string | null) {
@@ -120,7 +120,7 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${apiURL}/api/v1/login`, {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -133,14 +133,23 @@ export default function SignupPage() {
 
       const data = await res.json();
       
-      if (data.code !== 200) {
+      if (!res.ok || !data?.token) {
         setError(data.error?.email?.[0] || data.error || "Signup failed");
         showToast('error', data.error || 'invalid user') 
         return;
       }
 
+      const normalizedRole = normalizeRole(data.role) || "user";
+
       localStorage.setItem("gmail", formData.email.toLowerCase());
       localStorage.setItem("token", data.token);
+      localStorage.setItem("user_token", data.token);
+      localStorage.setItem("role", normalizedRole);
+      if (data.wheretogo) {
+        localStorage.setItem("wheretogo", data.wheretogo);
+      }
+      setTabSession("user");
+      sessionStorage.setItem("auth_bootstrapping", "1");
 
       // Store user info for onboarding
       if (data.filldata) {
