@@ -60,6 +60,19 @@ function deleteCookie(name: string) {
   document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
+function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
+  const routes: Record<string, string> = {
+    statp2: "/signup/step-2",
+    statp3: "/signup/step-3",
+    statp4: "/signup/step-4",
+    statp5: "/signup/step-5",
+    statp7: "/signup/step-7",
+    dashboard: "/",
+  };
+
+  return routes[wheretogo || ""] || "/";
+}
+
 // Function to update user stage - calls backend to calculate and get fresh JWT
 async function updateUserStage() {
   try {
@@ -258,18 +271,19 @@ function getCountryLabel(item: CountryItem) {
       }
 
       // IMPORTANT: Call updateStage to get fresh JWT with "dashboard"
-      await updateUserStage();
+      const wheretogo = await updateUserStage();
 
       // Get the original URL user wanted to visit
       const pendingRedirect = sanitizeInternalRedirect(getCookie("pending_redirect"));
       deleteCookie("pending_redirect");
+      const nextRoute = getRouteFromWhereToGo(wheretogo);
 
       // GO TO USER'S DESIRED PAGE OR DASHBOARD!
       setTimeout(() => {
-        if (pendingRedirect) {
+        if (pendingRedirect && nextRoute === "/") {
           window.location.href = pendingRedirect;
         } else {
-          window.location.href = "/";
+          window.location.href = nextRoute;
         }
       }, 1200);
     } catch (error: any) {

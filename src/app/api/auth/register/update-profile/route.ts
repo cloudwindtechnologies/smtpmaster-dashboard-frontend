@@ -6,13 +6,30 @@ function getCookieValue(cookieHeader: string, key: string): string {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+function getAuthToken(req: Request): string {
+  const cookie = req.headers.get("cookie") || "";
+  const cookieToken = getCookieValue(cookie, "token");
+
+  if (cookieToken) {
+    return cookieToken;
+  }
+
+  const authHeader = req.headers.get("authorization") || "";
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  if (bearerToken) {
+    return bearerToken;
+  }
+
+  return "";
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
     // ✅ Read token from cookie (you already set token cookie in login)
-    const cookie = req.headers.get("cookie") || "";
-    const token = getCookieValue(cookie, "token");
+    const token = getAuthToken(req);
 
     if (!token) {
       return NextResponse.json(
@@ -33,9 +50,10 @@ export async function POST(req: Request) {
 
     const data = await laravelRes.json().catch(() => ({}));
     return NextResponse.json(data, { status: laravelRes.status });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Server error";
     return NextResponse.json(
-      { success: false, message: e?.message || "Server error" },
+      { success: false, message },
       { status: 500 }
     );
   }

@@ -1,10 +1,32 @@
 import { apiURL } from "@/components/app_component/common/http";
 import { NextRequest, NextResponse } from "next/server";
 
+function getCookieValue(cookieHeader: string, key: string): string {
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${key}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function getAuthToken(request: NextRequest): string {
+  const cookie = request.headers.get("cookie") || "";
+  const cookieToken = getCookieValue(cookie, "token");
+
+  if (cookieToken) {
+    return cookieToken;
+  }
+
+  const authHeader = request.headers.get("authorization") || "";
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  if (bearerToken) {
+    return bearerToken;
+  }
+
+  return "";
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader?.replace('Bearer ', '');
+    const token = getAuthToken(request);
     
     console.log('Token being sent:', token ? 'Present' : 'MISSING');
 
@@ -27,7 +49,7 @@ export async function POST(request: NextRequest) {
     let data;
     try {
       data = JSON.parse(rawText);
-    } catch (e) {
+    } catch {
       return NextResponse.json({
         code: 500,
         message: 'Backend returned HTML instead of JSON',
