@@ -90,6 +90,7 @@ async function updateUserStage() {
       if (data.token) {
         document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
         localStorage.setItem("token", data.token);
+        localStorage.setItem("user_token", data.token);
         return data.wheretogo;
       }
     }

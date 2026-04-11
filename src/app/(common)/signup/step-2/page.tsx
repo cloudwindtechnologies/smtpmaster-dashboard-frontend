@@ -236,7 +236,7 @@ function VerifyEmailPageInner() {
               </div>
               <div>
                 <h1 className="text-lg font-semibold text-white sm:text-xl">Verify Email</h1>
-                <p className="text-sm text-white/90">Step 2 of 5: Complete this step to continue</p>
+                <p className="text-sm text-white/90">Step 2 of 7: Complete this step to continue</p>
               </div>
             </div>
           </div>

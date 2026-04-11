@@ -256,7 +256,7 @@ function AddressStepInner() {
                   Address Setup
                 </h1>
                 <p className="text-sm text-white/90">
-                  Step 4 of 5: Add your business address
+                  Step 4 of 7: Add your business address
                 </p>
               </div>
             </div>
