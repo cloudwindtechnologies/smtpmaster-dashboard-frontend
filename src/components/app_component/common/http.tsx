@@ -28,7 +28,7 @@ const envBackendUrl =
 
 export const apiURL = 'https://bak.way2inboxs.com';
 
-export const token = (): string | null => {
+ export const token = (): string | null => {
   return getAuthToken(); // Use the tab-aware token function
 };
 
