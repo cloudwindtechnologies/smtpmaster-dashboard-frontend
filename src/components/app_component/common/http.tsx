@@ -23,7 +23,7 @@ import { getToken as getAuthToken } from '@/lib/auth';
 const envBackendUrl =
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "https://backend.way2smtp.com";
+  "https://bak.way2inboxs.com";
 
 export const apiURL = 'https://backend.way2smtp.com';
 
