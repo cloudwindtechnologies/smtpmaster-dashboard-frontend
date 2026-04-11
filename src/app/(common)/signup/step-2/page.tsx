@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Loader2, RotateCcw } from "lucide-react";
 import { token as getToken } from "@/components/app_component/common/http";
 import { showToast } from "@/components/app_component/common/toastHelper";
@@ -54,6 +54,7 @@ async function updateUserStage() {
       if (data.token) {
         document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
         localStorage.setItem("token", data.token);
+        localStorage.setItem("user_token", data.token);
         return data.wheretogo;
       }
     }
@@ -74,13 +75,13 @@ export default function VerifyEmailPage() {
 }
 
 function VerifyEmailPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [email, setEmail] = useState<string>("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
+  const [changeEmailLoading, setChangeEmailLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
   const maskedEmail = useMemo(() => {
@@ -113,11 +114,6 @@ function VerifyEmailPageInner() {
     }
   }, [cooldown]);
 
-  useEffect(() => {
-    if (email) handleResend();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email]);
-
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -141,6 +137,7 @@ function VerifyEmailPageInner() {
       if (data.token) {
         document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
         localStorage.setItem("token", data.token);
+        localStorage.setItem("user_token", data.token);
       }
 
       // IMPORTANT: Call updateStage to get fresh JWT with calculated wheretogo
@@ -158,8 +155,8 @@ function VerifyEmailPageInner() {
           window.location.href = nextRoute;
         }
       }, 100);
-    } catch (err: any) {
-      showToast("error", err?.message || "Verification failed");
+    } catch (err: unknown) {
+      showToast("error", err instanceof Error ? err.message : "Verification failed");
       setLoading(false);
     }
   };
@@ -180,10 +177,51 @@ function VerifyEmailPageInner() {
 
       showToast("success", "Code resent!");
       setCooldown(60);
-    } catch (err: any) {
-      showToast("error", err?.message || "Resend failed");
+    } catch (err: unknown) {
+      showToast("error", err instanceof Error ? err.message : "Resend failed");
     } finally {
       setResendLoading(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    if (changeEmailLoading) return;
+
+    setChangeEmailLoading(true);
+
+    const pendingRedirect = getPendingRedirect();
+    const authToken = getToken();
+
+    try {
+      if (authToken) {
+        await fetch("/api/auth/logout", {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${authToken}`,
+          },
+        }).catch(() => {});
+      }
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user_token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("wheretogo");
+      localStorage.removeItem("userData");
+      localStorage.removeItem("filldata");
+      localStorage.removeItem("gmail");
+
+      sessionStorage.removeItem("tab_session");
+      sessionStorage.removeItem("auth_bootstrapping");
+      sessionStorage.removeItem("onboarding_filldata");
+
+      document.cookie = "token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+      document.cookie = "token=; Path=/; Max-Age=0; SameSite=Lax";
+
+      const target = pendingRedirect
+        ? `/signup?redirect=${encodeURIComponent(pendingRedirect)}`
+        : "/signup";
+
+      window.location.href = target;
     }
   };
 
@@ -211,10 +249,12 @@ function VerifyEmailPageInner() {
               <p className="mt-2 text-sm text-gray-600">
                 Wrong email?{" "}
                 <button
-                  onClick={() => router.push("/signup")}
+                  type="button"
+                  onClick={handleChangeEmail}
+                  disabled={changeEmailLoading}
                   className="font-semibold text-[#ff7800] hover:underline"
                 >
-                  Change it
+                  {changeEmailLoading ? "Changing..." : "Change it"}
                 </button>
               </p>
             </div>

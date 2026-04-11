@@ -6,6 +6,7 @@ import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { normalizeRole, setSuperadminSession, setTabSession } from "@/lib/auth";
 import { showToast } from "@/components/app_component/common/toastHelper";
+import Image from "next/image";
 
 type LoginResponse = {
   token?: string;
@@ -181,7 +182,6 @@ const onLogin = async (e: React.FormEvent) => {
   return (
     
     <div className="h-screen w-screen overflow-hidden bg-[#f4f6fb] flex items-center justify-center">
-      10.04.2026===1:21
       <div className="relative w-[70%] h-full transform scale-[0.8] origin-center">
         
         <div className="absolute inset-0 flex items-center justify-center">
@@ -264,7 +264,15 @@ const onLogin = async (e: React.FormEvent) => {
                   <div className="w-full max-w-[380px]">
                     <div className="mb-5">
                       <div className="mb-4 flex justify-center">
-                        <img src="/LoginLogo.png" alt="SMTP Master" className="h-auto max-h-[64px] w-auto object-contain" />
+                        <Image
+                            src="/LoginLogo.png"
+                            alt="SMTP Master"
+                            width={120}
+                            height={32}
+                            className="w-[13rem] object-contain"
+                            priority
+                            unoptimized
+                          />
                       </div>
 
                       <h1 className="text-center text-[26px] font-bold tracking-tight text-gray-900">Welcome back!</h1>

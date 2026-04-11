@@ -215,7 +215,7 @@ export default function Header() {
           </Link>
 
           <span className="hidden sm:block text-sm font-medium text-foreground">
-            Hi, {username || "Guest"}
+            {loading ? (<div className="h-4 w-24 bg-muted animate-pulse" />) : `Hi, ${username || "Guest"}`}
           </span>
 
           <div className="relative" ref={dropdownRef}>

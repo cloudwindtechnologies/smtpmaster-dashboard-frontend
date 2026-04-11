@@ -25,7 +25,7 @@ const envBackendUrl =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "https://backend.way2smtp.com";
 
-export const apiURL = 'https://backend.way2smtp.com';
+export const apiURL = 'http://localhost:8000';
 
 export const token = (): string | null => {
   return getAuthToken(); // Use the tab-aware token function

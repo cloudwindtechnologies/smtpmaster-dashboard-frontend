@@ -6,6 +6,8 @@ import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { normalizeRole, setTabSession } from "@/lib/auth";
+import toast from "react-hot-toast";
+import Image from "next/image";
 
 // Helper functions for pending redirect - MOVE THESE OUTSIDE THE COMPONENT
 function setPendingRedirect(path: string | null) {
@@ -67,11 +69,13 @@ export default function SignupPage() {
       setError("Password is required");
       return false;
     }
+  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
-    if (formData.password.length < 5 || formData.password.length > 20) {
-      setError("Password must be between 5 and 20 characters");
-      return false;
-    }
+  if (!passwordRegex.test(formData.password)) {
+    setError("Enter at least 8 characters with a combination of letters, numbers and punctuation marks (such as ! and &).");
+    showToast('error',error);
+    return false;
+  }
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
@@ -180,7 +184,7 @@ export default function SignupPage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#f4f6fb] flex items-center justify-center">
-      <div className="relative w-full h-full" style={{ transform: 'scale(0.8)', transformOrigin: 'center center' }}>
+      <div className="relative w-[70%] h-full" style={{ transform: 'scale(0.8)', transformOrigin: 'center center' }}>
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-[1180px] h-[110vh] max-h-[900px]">
             <div className="h-full w-full overflow-hidden rounded-[22px] bg-white shadow-[0_16px_50px_rgba(0,0,0,0.10)]">
@@ -266,8 +270,16 @@ export default function SignupPage() {
                 <div className="flex h-full items-center justify-center bg-white px-5 py-5 sm:px-7 lg:px-8">
                   <div className="w-full max-w-[380px]">
                     <div className="mb-5">
-                      <div className="mb-4 flex justify-center">
-                        <img src="/LoginLogo.png" alt="SMTP Master" className="h-auto max-h-[64px] w-auto object-contain" />
+                      <div className=" flex justify-center">
+                      <Image
+                          src="/LoginLogo.png"
+                          alt="SMTP Master"
+                          width={120}
+                          height={32}
+                          className="w-[13rem] object-contain"
+                          priority
+                          unoptimized
+                        />
                       </div>
 
                       <h1 className="text-center text-[26px] font-bold tracking-tight text-gray-900">Create Account</h1>
@@ -316,7 +328,7 @@ export default function SignupPage() {
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
-                        <p className="mt-1 text-[10px] text-gray-500">5-20 characters</p>
+                        <p className="mt-1 text-[10px] text-gray-500">8-20 characters</p>
                       </div>
 
                       <div>

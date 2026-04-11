@@ -49,6 +49,7 @@ function isPublicRoute(pathname: string) {
   if (PUBLIC_ROUTES.includes(pathname)) return true;
   if (pathname === "/favicon.ico") return true;
   if (pathname === "/Logoicon.png") return true;
+  if (pathname === "/LoginLogo.png") return true;
   return PUBLIC_PREFIXES.some((route) => pathname.startsWith(route));
 }
 
@@ -80,7 +81,7 @@ function isAdminRoute(pathname: string) {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const token = request.cookies.get("token")?.value;
 

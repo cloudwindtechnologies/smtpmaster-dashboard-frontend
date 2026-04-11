@@ -54,7 +54,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     setLoading(false);
   };
 
-  const fetchUser = async () => {
+  const fetchUser:any = async () => {
     const authToken = token();
 
     if (!authToken) {

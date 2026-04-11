@@ -136,10 +136,7 @@ export default function ProfileSetupPage() {
       showToast("error", "Last name is required");
       return false;
     }
-    if (!form.country.trim()) {
-      showToast("error", "Country is required");
-      return false;
-    }
+
     return true;
   };
 
@@ -254,23 +251,7 @@ export default function ProfileSetupPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                  Country <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <input
-                    type="text"
-                    name="country"
-                    required
-                    placeholder="Your country"
-                    value={form.country}
-                    onChange={handleChange}
-                    className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10"
-                  />
-                </div>
-              </div>
+       
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
