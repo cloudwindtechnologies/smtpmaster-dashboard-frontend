@@ -6,6 +6,7 @@ import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { normalizeRole, setTabSession } from "@/lib/auth";
+import toast from "react-hot-toast";
 
 // Helper functions for pending redirect - MOVE THESE OUTSIDE THE COMPONENT
 function setPendingRedirect(path: string | null) {
@@ -67,11 +68,13 @@ export default function SignupPage() {
       setError("Password is required");
       return false;
     }
+  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
-    if (formData.password.length < 5 || formData.password.length > 20) {
-      setError("Password must be between 5 and 20 characters");
-      return false;
-    }
+  if (!passwordRegex.test(formData.password)) {
+    setError("Enter at least 8 characters with a combination of letters, numbers and punctuation marks (such as ! and &).");
+    showToast('error',error);
+    return false;
+  }
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
@@ -316,7 +319,7 @@ export default function SignupPage() {
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
-                        <p className="mt-1 text-[10px] text-gray-500">5-20 characters</p>
+                        <p className="mt-1 text-[10px] text-gray-500">8-20 characters</p>
                       </div>
 
                       <div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { token } from "../../common/http";
 
@@ -45,27 +46,35 @@ type OldApiResponse = {
 
 type ApiResponse = InvoiceApiData | OldApiResponse;
 
-function formatMoney(value: number, currency = "INR") {
-  try {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${currency} ${value.toFixed(2)}`;
-  }
-}
-
 function toNumber(value: string | number | null | undefined) {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeText(value?: string | null) {
+  return (value || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
 }
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return "-";
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function addDays(dateStr?: string, days = 5) {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "-";
+  d.setDate(d.getDate() + days);
   return d.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "2-digit",
@@ -80,6 +89,127 @@ function titleCase(text?: string | null) {
     .split(" ")
     .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : ""))
     .join(" ");
+}
+
+function roundMoney(value: number) {
+  return Math.round(Number(value) || 0);
+}
+
+function formatInvoiceMoney(value: number, currency: "INR" | "USD") {
+  const safeValue = roundMoney(value);
+
+  if (currency === "INR") {
+    return `Rs.${safeValue}/-`;
+  }
+
+  return `$${safeValue}`;
+}
+function numberToWords(num: number, currency: "INR" | "USD") {
+  if (!Number.isFinite(num)) return "-";
+
+  const belowTwenty = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+
+  const toWords = (n: number): string => {
+    if (n < 20) return belowTwenty[n];
+    if (n < 100) {
+      return tens[Math.floor(n / 10)] + (n % 10 ? ` ${belowTwenty[n % 10]}` : "");
+    }
+    if (n < 1000) {
+      return (
+        belowTwenty[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 ? ` ${toWords(n % 100)}` : "")
+      );
+    }
+    if (n < 100000) {
+      return (
+        toWords(Math.floor(n / 1000)) +
+        " Thousand" +
+        (n % 1000 ? ` ${toWords(n % 1000)}` : "")
+      );
+    }
+    if (n < 10000000) {
+      return (
+        toWords(Math.floor(n / 100000)) +
+        " Lakh" +
+        (n % 100000 ? ` ${toWords(n % 100000)}` : "")
+      );
+    }
+    return (
+      toWords(Math.floor(n / 10000000)) +
+      " Crore" +
+      (n % 10000000 ? ` ${toWords(n % 10000000)}` : "")
+    );
+  };
+
+  const rounded = Math.round(num);
+  return `${toWords(rounded)} ${currency === "INR" ? "Only" : "Only"}`;
+}
+
+function InvoiceSkeleton() {
+  return (
+    <div className="min-h-screen bg-gray-100 py-4 sm:py-8 px-2 sm:px-4 print:bg-white print:p-0">
+      <div className="max-w-4xl mx-auto bg-white shadow-lg print:shadow-none animate-pulse">
+        <div className="bg-gray-300 h-24 sm:h-32" />
+        <div className="bg-gray-400 h-4" />
+        <div className="py-4 sm:py-6 flex justify-center">
+          <div className="h-6 sm:h-8 w-48 sm:w-72 bg-gray-300 rounded" />
+        </div>
+        <div className="px-4 sm:px-8 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row justify-between gap-4 sm:gap-10">
+            <div className="w-full sm:w-1/2 space-y-2 sm:space-y-3">
+              <div className="h-4 w-40 sm:w-48 bg-gray-300 rounded" />
+              <div className="h-4 w-56 sm:w-64 bg-gray-300 rounded" />
+              <div className="h-4 w-32 sm:w-40 bg-gray-300 rounded" />
+              <div className="h-4 w-48 sm:w-56 bg-gray-300 rounded" />
+            </div>
+            <div className="w-full sm:w-1/2 space-y-2 sm:space-y-3 flex flex-col items-start sm:items-end">
+              <div className="h-4 w-36 sm:w-40 bg-gray-300 rounded" />
+              <div className="h-4 w-32 sm:w-36 bg-gray-300 rounded" />
+              <div className="h-4 w-32 sm:w-36 bg-gray-300 rounded" />
+            </div>
+          </div>
+        </div>
+        <div className="px-4 sm:px-8 py-3 sm:py-4">
+          <div className="h-64 sm:h-80 w-full bg-gray-300 rounded" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function InvoicePage() {
@@ -124,7 +254,9 @@ export default function InvoicePage() {
         const json = (await res.json()) as ApiResponse;
 
         const normalized =
-          "payment_info" in json && json.payment_info ? json.payment_info : (json as InvoiceApiData);
+          "payment_info" in json && json.payment_info
+            ? json.payment_info
+            : (json as InvoiceApiData);
 
         if (!normalized?.invoice_id) {
           throw new Error("No invoice data found");
@@ -142,408 +274,346 @@ export default function InvoicePage() {
     return () => controller.abort();
   }, [id, router]);
 
-  const company = {
-    name: "SMTPMaster",
-    legalName: "SMTPMaster Technologies",
-    addressLine1: "Kolkata, West Bengal, India",
-    phone: "+91 7439680211",
-    email: "support@smtpmaster.com",
-    website: "www.smtpmaster.com",
-    gstin: "YOUR_GST_NUMBER",
-  };
-
   const invoice = data;
 
-  const quantity = toNumber(invoice?.quantity || 1) || 1;
-  const totalAmount = toNumber(invoice?.amount);
-  const discount = toNumber(invoice?.discount);
-  const tax = toNumber(invoice?.tax);
-  const taxableAmount = Math.max(totalAmount - tax, 0);
-  const unitRate = quantity > 0 ? taxableAmount / quantity : taxableAmount;
+  const company = {
+    legalName: "CLOUDWIND TECHNOLOGIES LLP",
+    phone: "+91 7439680211",
+    llp: "LLP Identification Number: AAT-7224",
+    website: "www.cloudwind.in",
+    email: "info@cloudwind.in",
+    office:
+      "OFFICE:- 5, Shahid Khudiram Bose Sarani, Opposite Ajanta Apartment Ichapur, Howrah, West Bengal, India, 711104",
+    gstin: "GST-IN- 19AAPFC6989D1ZS",
+    footerTerms: "https://smtpmaster.com/terms-of-use/",
+  };
 
+  const normalizedCountry = normalizeText(invoice?.country);
+  const normalizedState = normalizeText(invoice?.state);
+
+  const isIndia = normalizedCountry === "india";
+  const isWestBengal = isIndia && ["westbengal", "wb"].includes(normalizedState);
+  const displayCurrency: "INR" | "USD" = isIndia ? "INR" : "USD";
+
+const quantity = Math.max(1, Math.round(toNumber(invoice?.quantity || 1)));
+const totalAmount = roundMoney(toNumber(invoice?.amount));
+const tax = roundMoney(toNumber(invoice?.tax));
+const taxableAmount = roundMoney(Math.max(totalAmount - tax, 0));
+const unitPrice = quantity > 0 ? roundMoney(taxableAmount / quantity) : taxableAmount;
+
+const cgst = isWestBengal ? roundMoney(tax / 2) : 0;
+const sgst = isWestBengal ? roundMoney(tax / 2) : 0;
+const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
+
+  const invoiceNo = invoice?.invoice_id_new || invoice?.invoice_id || "-";
   const billToName = invoice?.user_or_company_name || invoice?.email || "-";
-  const fullAddress = [
+  const planName = invoice?.plane_name || "Email Marketing Plan";
+
+  const addressText = [
     invoice?.address,
     invoice?.city,
     invoice?.state,
-    invoice?.pin,
     titleCase(invoice?.country),
   ]
     .filter(Boolean)
     .join(", ");
 
-  const invoiceNo = invoice?.invoice_id_new || invoice?.invoice_id || "-";
-  const couponText = invoice?.coupon || invoice?.coupon_applied || "-";
+  const totalInWords = useMemo(
+    () => numberToWords(totalAmount, displayCurrency),
+    [totalAmount, displayCurrency]
+  );
 
-  const taxBreakup = useMemo(() => {
-    const half = tax / 2;
-    return {
-      cgst: half,
-      sgst: half,
-      igst: tax,
-    };
-  }, [tax]);
+  const showIGST = isIndia && !isWestBengal;
+  const showCGSTSGST = isWestBengal;
 
   return (
-    <div className="min-h-screen bg-neutral-100 px-4 py-6 md:px-6 print:bg-white print:p-0">
-      <div className="mx-auto mb-4 flex max-w-[900px] justify-end print:hidden">
-        <button
-          onClick={async () => {
-            if (!id) return;
+    <div className="min-h-screen bg-gray-100 py-4 sm:py-8 px-2 sm:px-4 print:bg-white print:p-0">
+      {loading && <InvoiceSkeleton />}
 
-            try {
-              const res = await fetch(`/api/order_history/dwonload_invoice?id=${id}`, {
-                method: "GET",
-                headers: {
-                  Authorization: `Bearer ${token()}`,
-                },
-              });
+      {!loading && err && (
+        <div className="max-w-4xl mx-auto bg-white shadow-lg p-4 sm:p-8">
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {err}
+          </div>
+        </div>
+      )}
 
-              if (res.status === 401) {
-                router.replace("/login");
-                return;
-              }
+      {!loading && !err && invoice && (
+        <div className="max-w-4xl mx-auto bg-white shadow-lg print:shadow-none relative">
+          {/* Header Section */}
+          <div className="relative w-full h-[120px] sm:h-[170px] flex overflow-hidden">
+            {/* LEFT WHITE (with angle cut) */}
+            <div
+              className="absolute left-0 top-0 h-full w-[65%] sm:w-[60%] bg-white z-10"
+              style={{
+                clipPath: "polygon(0 0, 85% 0, 70% 100%, 0% 100%)",
+              }}
+            >
+              <div className="h-full flex items-center px-3 sm:px-4">
+                <div className="relative w-[250px] sm:w-[350px] md:w-[400px] h-[50px] sm:h-[70px] md:h-[80px]">
+                  <Image
+                    src="/CloudwindLogo.png"
+                    alt="Cloudwind Logo"
+                    fill
+                    className="object-contain object-left"
+                    priority
+                    unoptimized
+                  />
+                </div>
+              </div>
+            </div>
 
-              if (!res.ok) {
-                const txt = await res.text().catch(() => "");
-                throw new Error(`Download failed: ${res.status} ${txt}`);
-              }
-
-              const blob = await res.blob();
-              const cd = res.headers.get("content-disposition") || "";
-              const match = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)["']?/i);
-              const filename = match?.[1]
-                ? decodeURIComponent(match[1])
-                : `${id}_invoice.pdf`;
-
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = filename;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              window.URL.revokeObjectURL(url);
-            } catch (err: any) {
-              alert(err?.message || "Download error");
-            }
-          }}
-          className="rounded-md bg-orange-600 px-5 py-2 text-sm font-medium text-white hover:bg-orange-700"
-        >
-          Download PDF
-        </button>
-      </div>
-
-      <div className="mx-auto max-w-[900px] bg-white shadow print:max-w-none print:shadow-none">
-        {loading && (
-          <div className="p-8 text-sm text-gray-600">Loading invoice...</div>
-        )}
-
-        {!loading && err && (
-          <div className="p-8">
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {err}
+            {/* RIGHT BLUE */}
+            <div className="w-full h-full bg-blue-600 flex justify-end items-center px-3 sm:px-6 text-white text-right">
+              <div className="w-[55%] sm:w-[45%] text-white px-2 sm:px-5 py-2 sm:py-4 text-right text-[10px] sm:text-xs space-y-0.5 sm:space-y-1 leading-4 sm:leading-5">
+                <p className="truncate">{company.phone}</p>
+                <p className="truncate hidden xs:block">{company.llp}</p>
+                <p className="truncate">{company.website}</p>
+                <p className="truncate">{company.email}</p>
+                <p className="mt-1 text-[9px] sm:text-xs leading-3 sm:leading-4 line-clamp-3 sm:line-clamp-none">
+                  {company.office}
+                </p>
+                <p className="truncate">{company.gstin}</p>
+              </div>
             </div>
           </div>
-        )}
 
-        {!loading && !err && invoice && (
-          <div className="border border-black text-[11px] text-black">
-            {/* Header */}
-            <div className="border-b border-black px-4 py-3">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div className="text-[22px] font-bold leading-none">
-                    Tax Invoice
-                  </div>
-                  <div className="mt-2 space-y-0.5 text-[10px]">
-                    <p>
-                      <span className="font-semibold">GSTIN:</span>{" "}
-                      {company.gstin || "-"}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Invoice No:</span>{" "}
-                      {invoiceNo}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Invoice Date:</span>{" "}
-                      {formatDate(invoice.created_on)}
-                    </p>
-                  </div>
+          {/* Bottom strip */}
+          <div className="h-6 sm:h-8 bg-blue-900"></div>
+
+          {/* Title */}
+          <div className="text-center py-4 sm:py-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 px-4">
+              {planName}
+            </h2>
+          </div>
+
+          {/* Bill To and Invoice Details */}
+          <div className="px-4 sm:px-8 py-3 sm:py-4">
+            <div className="flex flex-col sm:flex-row justify-between gap-4 sm:gap-8">
+              <div className="w-full sm:w-1/2 space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                <div className="flex">
+                  <span className="font-bold w-20 sm:w-24 flex-shrink-0">Bill To:</span>
+                  <span className="break-words">{billToName}</span>
                 </div>
-
-                <div className="text-center md:text-right">
-                  <div className="text-[30px] font-extrabold leading-none text-orange-600">
-                    SMTP<span className="text-neutral-900">Master</span>
-                  </div>
-                  <div className="mt-1 text-[10px] text-gray-700">
-                    {company.website}
-                  </div>
-                  <div className="mt-2 text-[10px] leading-4">
-                    <p>{company.legalName}</p>
-                    <p>{company.addressLine1}</p>
-                    <p>
-                      {company.phone} | {company.email}
-                    </p>
-                  </div>
+                <div className="flex">
+                  <span className="font-bold w-20 sm:w-24 flex-shrink-0">Address:</span>
+                  <span className="whitespace-pre-line break-words">{addressText || "-"}</span>
                 </div>
-              </div>
-            </div>
-
-            {/* Top info line */}
-            <div className="grid grid-cols-1 border-b border-black md:grid-cols-3">
-              <div className="border-b border-black p-2 md:border-b-0 md:border-r md:border-black">
-                <p className="font-semibold">Payment Reference</p>
-                <p>{invoice.razorpay_payment_id || "-"}</p>
-              </div>
-              <div className="border-b border-black p-2 md:border-b-0 md:border-r md:border-black">
-                <p className="font-semibold">Payment Method</p>
-                <p className="uppercase">{invoice.method || "-"}</p>
-              </div>
-              <div className="p-2">
-                <p className="font-semibold">Payment Status</p>
-                <p className="uppercase">{invoice.status || "-"}</p>
-              </div>
-            </div>
-
-            {/* Billing blocks */}
-            <div className="grid grid-cols-1 md:grid-cols-2">
-              <div className="border-b border-black p-3 md:border-r md:border-black">
-                <div className="mb-2 text-[11px] font-bold uppercase">Bill To</div>
-                <div className="space-y-1 leading-4">
-                  <p className="font-semibold">{billToName}</p>
-                  <p>{fullAddress || "-"}</p>
-                  <p>
-                    <span className="font-semibold">Email:</span>{" "}
-                    {invoice.email || "-"}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Phone:</span>{" "}
-                    {invoice.contact || "-"}
-                  </p>
-                  <p>
-                    <span className="font-semibold">GSTIN:</span>{" "}
-                    {invoice.gst_in || "-"}
-                  </p>
+                <div className="flex">
+                  <span className="font-bold w-20 sm:w-24 flex-shrink-0">Zip Code:</span>
+                  <span>{invoice.pin || "-"}</span>
+                </div>
+                <div className="flex">
+                  <span className="font-bold w-20 sm:w-24 flex-shrink-0">GSTIN:</span>
+                  <span className="break-words">{invoice.gst_in || ""}</span>
+                </div>
+                <div className="flex">
+                  <span className="font-bold w-20 sm:w-24 flex-shrink-0">Email:</span>
+                  <span className="break-words">{invoice.email || "-"}</span>
+                </div>
+                <div className="flex">
+                  <span className="font-bold w-20 sm:w-24 flex-shrink-0">Ph.No.:</span>
+                  <span>{invoice.contact || "-"}</span>
                 </div>
               </div>
 
-              <div className="border-b border-black p-3">
-                <div className="mb-2 text-[11px] font-bold uppercase">
-                  Invoice Details
+              <div className="w-full sm:w-1/2 space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                <div className="flex justify-start sm:justify-end">
+                  <span className="font-bold w-24 sm:w-32 flex-shrink-0">Invoice:</span>
+                  <span className="sm:w-48 truncate">{invoiceNo}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 leading-4">
-                  <p className="font-semibold">Customer ID</p>
-                  <p>{invoice.member_id || "-"}</p>
-
-                  <p className="font-semibold">Plan ID</p>
-                  <p>{invoice.plan_id || "-"}</p>
-
-                  <p className="font-semibold">User Plan ID</p>
-                  <p>{invoice.user_plan_id || "-"}</p>
-
-                  <p className="font-semibold">Currency</p>
-                  <p>{invoice.currency || "-"}</p>
-
-                  <p className="font-semibold">Coupon</p>
-                  <p>{couponText}</p>
-
-                  <p className="font-semibold">Order Date</p>
-                  <p>{formatDate(invoice.created_on)}</p>
+                <div className="flex justify-start sm:justify-end">
+                  <span className="font-bold w-24 sm:w-32 flex-shrink-0">Invoice Date:</span>
+                  <span className="sm:w-48">{formatDate(invoice.created_on)}</span>
+                </div>
+                <div className="flex justify-start sm:justify-end">
+                  <span className="font-bold w-24 sm:w-32 flex-shrink-0">Due Date:</span>
+                  <span className="sm:w-48">{addDays(invoice.created_on, 5)}</span>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Item table */}
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-[11px]">
-                <thead>
-                  <tr className="bg-neutral-100">
-                    <th className="border-r border-b border-black p-2 text-left font-bold">
-                      #
-                    </th>
-                    <th className="border-r border-b border-black p-2 text-left font-bold">
-                      DESCRIPTION
-                    </th>
-                    <th className="border-r border-b border-black p-2 text-center font-bold">
-                      QTY
-                    </th>
-                    <th className="border-r border-b border-black p-2 text-right font-bold">
-                      RATE
-                    </th>
-                    <th className="border-r border-b border-black p-2 text-right font-bold">
-                      DISCOUNT
-                    </th>
-                    <th className="border-r border-b border-black p-2 text-right font-bold">
-                      TAXABLE
-                    </th>
-                    <th className="border-r border-b border-black p-2 text-right font-bold">
-                      TAX
-                    </th>
-                    <th className="border-b border-black p-2 text-right font-bold">
-                      TOTAL
-                    </th>
+          {/* Table */}
+          <div className="px-2 sm:px-8 py-3 sm:py-4 relative overflow-x-auto">
+            <table className="w-full border-collapse border border-gray-800 min-w-[600px]">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border border-gray-800 px-2 sm:px-4 py-2 text-left text-xs sm:text-sm font-bold">
+                    ID
+                  </th>
+                  <th className="border border-gray-800 px-2 sm:px-4 py-2 text-left text-xs sm:text-sm font-bold">
+                    DESCRIPTION
+                  </th>
+                  <th className="border border-gray-800 px-2 sm:px-4 py-2 text-center text-xs sm:text-sm font-bold">
+                    QTY
+                  </th>
+                  <th className="border border-gray-800 px-2 sm:px-4 py-2 text-left text-xs sm:text-sm font-bold">
+                    UNIT PRICE
+                  </th>
+                  <th className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm font-bold">
+                    AMOUNT({displayCurrency === "INR" ? "inr" : "usd"})
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm">1</td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm uppercase">
+                    {planName}
+                  </td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm text-center">
+                    {quantity}
+                  </td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm">
+                    {formatInvoiceMoney(unitPrice, displayCurrency)}
+                  </td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm text-right">
+                    {formatInvoiceMoney(taxableAmount, displayCurrency)}
+                  </td>
+                </tr>
+
+                {[...Array(4)].map((_, i) => (
+                  <tr key={`empty-${i}`}>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
                   </tr>
-                </thead>
-                <tbody>
+                ))}
+
+                <tr>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
+                    <span className="float-right font-semibold text-xs sm:text-sm">Taxable Value</span>
+                  </td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
+                    {formatInvoiceMoney(taxableAmount, displayCurrency)}
+                  </td>
+                </tr>
+
+                {showIGST && (
                   <tr>
-                    <td className="border-r border-b border-black p-2 align-top">
-                      1
+                    <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
+                      <span className="float-right text-xs sm:text-sm">IGST @ 18%</span>
                     </td>
-                    <td className="border-r border-b border-black p-2 align-top">
-                      <div className="font-medium">
-                        {invoice.plane_name || "Subscription Plan"}
-                      </div>
-                      <div className="mt-1 text-[10px] text-gray-700">
-                        Invoice for subscribed package / service plan
-                      </div>
-                    </td>
-                    <td className="border-r border-b border-black p-2 text-center align-top">
-                      {quantity}
-                    </td>
-                    <td className="border-r border-b border-black p-2 text-right align-top">
-                      {formatMoney(unitRate, invoice.currency)}
-                    </td>
-                    <td className="border-r border-b border-black p-2 text-right align-top">
-                      {formatMoney(discount, invoice.currency)}
-                    </td>
-                    <td className="border-r border-b border-black p-2 text-right align-top">
-                      {formatMoney(taxableAmount, invoice.currency)}
-                    </td>
-                    <td className="border-r border-b border-black p-2 text-right align-top">
-                      {formatMoney(tax, invoice.currency)}
-                    </td>
-                    <td className="border-b border-black p-2 text-right align-top font-semibold">
-                      {formatMoney(totalAmount, invoice.currency)}
+                    <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
+                      {formatInvoiceMoney(igst, displayCurrency)}
                     </td>
                   </tr>
+                )}
 
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i}>
-                      <td className="border-r border-b border-black p-4">&nbsp;</td>
-                      <td className="border-r border-b border-black p-4">&nbsp;</td>
-                      <td className="border-r border-b border-black p-4">&nbsp;</td>
-                      <td className="border-r border-b border-black p-4">&nbsp;</td>
-                      <td className="border-r border-b border-black p-4">&nbsp;</td>
-                      <td className="border-r border-b border-black p-4">&nbsp;</td>
-                      <td className="border-r border-b border-black p-4">&nbsp;</td>
-                      <td className="border-b border-black p-4">&nbsp;</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Bottom summary */}
-            <div className="grid grid-cols-1 md:grid-cols-[1.3fr_0.9fr]">
-              <div className="border-b border-black p-3 md:border-r md:border-black md:border-b-0">
-                <div className="mb-2 text-[11px] font-bold uppercase">
-                  Terms & Notes
-                </div>
-                <div className="space-y-1 text-[10px] leading-4 text-gray-800">
-                  <p>Thank you for your business.</p>
-                  <p>This is a computer-generated invoice.</p>
-                  <p>
-                    Service: {invoice.plane_name || "Plan Subscription"} | Payment ID:{" "}
-                    {invoice.razorpay_payment_id || "-"}
-                  </p>
-                  <p>
-                    Coupon Applied: {couponText} | Method:{" "}
-                    {(invoice.method || "-").toUpperCase()}
-                  </p>
-                </div>
-
-                <div className="mt-4 border-t border-black pt-2">
-                  <div className="mb-1 text-[11px] font-bold uppercase">
-                    Customer Address
-                  </div>
-                  <div className="text-[10px] leading-4">
-                    <p>{billToName}</p>
-                    <p>{fullAddress || "-"}</p>
-                    <p>
-                      {invoice.email || "-"} | {invoice.contact || "-"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-0">
-                <table className="w-full border-collapse text-[11px]">
-                  <tbody>
+                {showCGSTSGST && (
+                  <>
                     <tr>
-                      <td className="border-b border-black p-2 font-semibold">
-                        Taxable Amount
+                      <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
+                        <span className="float-right text-xs sm:text-sm">CGST @ 9%</span>
                       </td>
-                      <td className="border-b border-black p-2 text-right">
-                        {formatMoney(taxableAmount, invoice.currency)}
+                      <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
+                        {formatInvoiceMoney(cgst, displayCurrency)}
                       </td>
                     </tr>
 
                     <tr>
-                      <td className="border-b border-black p-2 font-semibold">
-                        Discount
+                      <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
+                        <span className="float-right text-xs sm:text-sm">SGST @ 9%</span>
                       </td>
-                      <td className="border-b border-black p-2 text-right">
-                        {formatMoney(discount, invoice.currency)}
-                      </td>
-                    </tr>
-
-                    <tr>
-                      <td className="border-b border-black p-2 font-semibold">
-                        Tax
-                      </td>
-                      <td className="border-b border-black p-2 text-right">
-                        {formatMoney(tax, invoice.currency)}
+                      <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
+                        {formatInvoiceMoney(sgst, displayCurrency)}
                       </td>
                     </tr>
+                  </>
+                )}
 
-                    <tr>
-                      <td className="border-b border-black p-2 font-semibold">
-                        CGST (50%)
-                      </td>
-                      <td className="border-b border-black p-2 text-right">
-                        {formatMoney(taxBreakup.cgst, invoice.currency)}
-                      </td>
-                    </tr>
+                <tr>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
+                    <span className="float-right font-bold text-xs sm:text-sm">Total</span>
+                  </td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right font-bold text-xs sm:text-sm">
+                    {formatInvoiceMoney(totalAmount, displayCurrency)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-                    <tr>
-                      <td className="border-b border-black p-2 font-semibold">
-                        SGST (50%)
-                      </td>
-                      <td className="border-b border-black p-2 text-right">
-                        {formatMoney(taxBreakup.sgst, invoice.currency)}
-                      </td>
-                    </tr>
-
-                    <tr className="bg-neutral-100">
-                      <td className="border-b border-black p-2 text-[12px] font-bold">
-                        Grand Total
-                      </td>
-                      <td className="border-b border-black p-2 text-right text-[12px] font-bold">
-                        {formatMoney(totalAmount, invoice.currency)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="p-3">
-                  <div className="text-right text-[10px]">
-                    <p className="font-semibold">For {company.legalName}</p>
-                    <div className="my-8" />
-                    <p>Authorized Signatory</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between border-t border-black px-4 py-2 text-[10px] text-gray-700">
-              <p>Thank you for choosing SMTPMaster.</p>
-              <p>Page 1 of 1</p>
+            {/* PAID Stamp */}
+            <div className="pointer-events-none absolute left-[20%] sm:left-[24%] top-[40%] sm:top-[52%] -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-2 sm:border-4 border-red-600 px-3 sm:px-6 py-1 sm:py-2 text-xl sm:text-3xl font-bold text-red-600 opacity-75 print:opacity-100 whitespace-nowrap">
+              PAID
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Total in Words */}
+          <div className="px-4 sm:px-8 py-3 sm:py-4">
+            <p className="text-xs sm:text-sm">
+              <span className="font-bold">Total In Words:</span> {totalInWords}
+            </p>
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 sm:px-8 py-4 sm:py-6 border-t border-gray-300 mt-4 sm:mt-8">
+            <p className="text-[10px] sm:text-xs mb-3 sm:mb-4">
+              <span className="font-bold">T&C:</span>{" "}
+              <a
+                href={company.footerTerms}
+                className="text-blue-600 underline break-all"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {company.footerTerms}
+              </a>
+            </p>
+
+            <p className="text-[10px] sm:text-xs text-center text-gray-600">
+              This is computer generated invoice for Project SMTPMaster (smtpmaster.com).
+            </p>
+
+            <div className="flex justify-center mt-3 sm:mt-4">
+              <div className="relative w-[100px] sm:w-[140px] mb-[-1.5rem] sm:mb-[-2rem]">
+                <Image
+                  src="/LoginLogo.png"
+                  alt="SMTP Master"
+                  width={120}
+                  height={32}
+                  className="w-[10rem] sm:w-[13rem] object-contain"
+                  priority
+                  unoptimized
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Print Button */}
+          <div className="px-4 sm:px-8 py-4 text-center sm:text-right no-print">
+            <button
+              onClick={() => window.print()}
+              className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded hover:bg-blue-700 transition-colors text-sm sm:text-base w-full sm:w-auto"
+            >
+              Print Invoice
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style jsx global>{`
+        @media print {
+          .no-print {
+            display: none !important;
+          }
+
+          body {
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+        }
+        
+        @media (min-width: 475px) {
+          .xs\\:block {
+            display: block;
+          }
+        }
+      `}</style>
     </div>
   );
 }

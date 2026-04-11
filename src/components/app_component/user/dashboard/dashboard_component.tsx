@@ -1,5 +1,5 @@
 "use client";
-
+//stop
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -31,7 +31,19 @@ import {
 import { token } from "../../common/http";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+type DomainInfoItem = {
+  id: number;
+  user_id: number;
+  domain_name: string;
+  spf_type?: string | null;
+  spf_host?: string | null;
+};
 
+type DomainInfoResponse = {
+  data?: {
+    domainList?: DomainInfoItem[];
+  };
+};
 type EmailStatsRow = {
   delivered_emails: number | null;
   bounce_mails: number | null;
@@ -98,7 +110,7 @@ type SpamReportResponse = {
 };
 
 type AccountHealthStatus = "good" | "poor" | "extremely_bad";
-type NetworkStatus = "excellent" | "fair" | "poor";
+type NetworkStatus = "excellent" | "fair" | "poor" | "nutral";
 
 const toNum = (v: number | null | undefined) => (typeof v === "number" ? v : 0);
 
@@ -220,6 +232,16 @@ function getNetworkMeta(successRateNum: number) {
     return {
       status: "fair" as NetworkStatus,
       label: "Fair",
+      stroke: "var(--warning)",
+      fill: "var(--warning)",
+      iconBg: "bg-[var(--warning-soft)]",
+      iconText: "text-[var(--warning)]",
+    };
+  }
+  if (successRateNum == 0) {
+    return {
+      status: "nutral" as NetworkStatus,
+      label: "No Emails Sent",
       stroke: "var(--warning)",
       fill: "var(--warning)",
       iconBg: "bg-[var(--warning-soft)]",
@@ -640,7 +662,7 @@ if (loading) {
             <h2 className="text-[27px] font-bold leading-none text-[var(--text-strong)]">
               Email Sending Overview:
             </h2>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--violet-soft)] text-[var(--violet)]">
+            <div className="flex mt-2 h-10 w-10 items-center justify-center rounded-full bg-[var(--violet-soft)] text-[var(--violet)]">
               <Mail className="h-5 w-5" />
             </div>
           </div>
@@ -744,6 +766,8 @@ function getRangeFromPreset(preset: PresetKey, maxISO: string) {
 }
 
 export default function DashboardPage() {
+  const [hasDomain, setHasDomain] = useState(true);
+  const [domainLoading, setDomainLoading] = useState(true);
   const [stats, setStats] = useState<UserStatsData | null>(null);
   const [spamReportTotal, setSpamReportTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -765,84 +789,96 @@ export default function DashboardPage() {
 
   const router = useRouter();
 
-  const getUserStats = useCallback(async () => {
-    setLoading(true);
-    setError("");
+const getUserStats = useCallback(async () => {
+  setLoading(true);
+  setDomainLoading(true);
+  setError("");
 
-    const ctrl = new AbortController();
-    const timeoutId = setTimeout(() => ctrl.abort(), 10000);
+  const userCtrl = new AbortController();
+  const spamCtrl = new AbortController();
+  const domainCtrl = new AbortController();
 
-    try {
-      const authHeaders = {
-        accept: "application/json",
-        Authorization: `Bearer ${token()}`,
-      };
+  const userTimeout = setTimeout(() => userCtrl.abort(), 20000);
+  const spamTimeout = setTimeout(() => spamCtrl.abort(), 20000);
+  const domainTimeout = setTimeout(() => domainCtrl.abort(), 20000);
 
-      const [userStatsRes, spamReportRes] = await Promise.allSettled([
-        fetch("/api/dashboard/userStats", {
-          method: "GET",
-          headers: authHeaders,
-          signal: ctrl.signal,
-          cache: "no-store",
-        }),
-        fetch("/api/spam-report?page=1", {
-          method: "GET",
-          headers: authHeaders,
-          signal: ctrl.signal,
-          cache: "no-store",
-        }),
-      ]);
+  try {
+    const authHeaders = {
+      accept: "application/json",
+      Authorization: `Bearer ${token()}`,
+    };
 
-      clearTimeout(timeoutId);
+    const userStatsPromise = fetch("/api/dashboard/userStats", {
+      method: "GET",
+      headers: authHeaders,
+      signal: userCtrl.signal,
+      cache: "no-store",
+    });
 
-      if (userStatsRes.status === "rejected") {
-        throw new Error("Failed to load dashboard data");
-      }
+    const spamPromise = fetch("/api/spam-report?page=1", {
+      method: "GET",
+      headers: authHeaders,
+      signal: spamCtrl.signal,
+      cache: "no-store",
+    });
 
-      const userStatsResponse = userStatsRes.value;
+    const domainPromise = fetch("/api/domain-info", {
+      method: "GET",
+      headers: authHeaders,
+      signal: domainCtrl.signal,
+      cache: "no-store",
+    });
 
-      if (userStatsResponse.status === 401) {
-        router.replace("/login");
-        return;
-      }
+    const [userStatsRes, spamReportRes, domainInfoRes] = await Promise.allSettled([
+      userStatsPromise,
+      spamPromise,
+      domainPromise,
+    ]);
 
-      if (!userStatsResponse.ok) {
-        throw new Error(`Failed to load data: ${userStatsResponse.status}`);
-      }
-
-      const json = (await userStatsResponse.json()) as UserStatsResponse;
-      setStats(json?.data ?? null);
-
-      if (spamReportRes.status === "fulfilled") {
-        const spamResponse = spamReportRes.value;
-
-        if (spamResponse.status === 401) {
-          router.replace("/login");
-          return;
-        }
-
-        if (spamResponse.ok) {
-          const spamJson = (await spamResponse.json()) as SpamReportResponse;
-          setSpamReportTotal(toNum(spamJson?.data?.total));
-        } else {
-          setSpamReportTotal(0);
-        }
-      } else {
-        setSpamReportTotal(0);
-      }
-    } catch (e: any) {
-      setError(e?.message || "Failed to load dashboard data");
-      setStats(null);
-      setSpamReportTotal(0);
-    } finally {
-      setLoading(false);
+    if (userStatsRes.status === "rejected") {
+      throw new Error("Dashboard request timed out or failed");
     }
 
-    return () => {
-      clearTimeout(timeoutId);
-      ctrl.abort();
-    };
-  }, [router]);
+    const userStatsResponse = userStatsRes.value;
+
+    if (userStatsResponse.status === 401) {
+      router.replace("/login");
+      return;
+    }
+
+    if (!userStatsResponse.ok) {
+      throw new Error(`Failed to load data: ${userStatsResponse.status}`);
+    }
+
+    const json = await userStatsResponse.json();
+    setStats(json?.data ?? null);
+
+    if (domainInfoRes.status === "fulfilled" && domainInfoRes.value.ok) {
+      const domainJson = await domainInfoRes.value.json();
+      const domainList = domainJson?.data?.domainList;
+      setHasDomain(Array.isArray(domainList) ? domainList.length > 0 : true);
+    } else {
+      setHasDomain(true);
+    }
+
+    if (spamReportRes.status === "fulfilled" && spamReportRes.value.ok) {
+      const spamJson = await spamReportRes.value.json();
+      setSpamReportTotal(toNum(spamJson?.data?.total));
+    } else {
+      setSpamReportTotal(0);
+    }
+  } catch (e: any) {
+    setError(e?.message || "Failed to load dashboard data");
+    setStats(null);
+    setSpamReportTotal(0);
+  } finally {
+    clearTimeout(userTimeout);
+    clearTimeout(spamTimeout);
+    clearTimeout(domainTimeout);
+    setLoading(false);
+    setDomainLoading(false);
+  }
+}, [router]);
 
   useEffect(() => {
     getUserStats();
@@ -1012,6 +1048,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[var(--page-bg)]" style={{borderRadius: "var(--page-radius)"}}>
       
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        
         {error && (
           <div className="mb-6 rounded-xl border border-[var(--danger)]/30 bg-gradient-to-r from-[var(--danger-soft)] to-[var(--surface)] p-4">
             <div className="flex items-center gap-3">
@@ -1030,7 +1067,151 @@ export default function DashboardPage() {
           </div>
         )}
 
+{!domainLoading && !hasDomain && (
+  <div className="relative mb-6">
+    {/* Main floating card */}
+    <div className="handkerchief-float relative overflow-hidden rounded-3xl border border-red-300 bg-gradient-to-r from-red-50 via-white to-red-100 shadow-[0_10px_30px_rgba(239,68,68,0.12)]">
+      {/* background glow */}
+      <div className="absolute -left-10 -top-10 h-40 w-40 rounded-full bg-red-200/40 blur-3xl" />
+      <div className="absolute -right-10 -bottom-10 h-40 w-40 rounded-full bg-red-300/30 blur-3xl" />
 
+      <div className="relative z-10 flex flex-col gap-5 p-6 sm:p-7 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="relative shrink-0">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 text-red-600 shadow-inner">
+              <AlertTriangle className="h-7 w-7" />
+            </div>
+            <span className="absolute -right-1 -top-1 flex h-4 w-4">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex h-4 w-4 rounded-full bg-red-500" />
+            </span>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-bold text-red-700">
+              No domain added yet
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-red-600">
+              Add at least one sending domain to set up your email infrastructure properly.
+              Without a domain, your account setup remains incomplete and you may miss
+              important sending configuration steps.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-red-200 bg-white/80 px-3 py-1 text-xs font-medium text-red-600">
+                Domain required
+              </span>
+              <span className="rounded-full border border-red-200 bg-white/80 px-3 py-1 text-xs font-medium text-red-600">
+                Setup incomplete
+              </span>
+              <span className="rounded-full border border-red-200 bg-white/80 px-3 py-1 text-xs font-medium text-red-600">
+                Action needed
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center">
+          <Link
+            href="/domain-info"
+            className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition duration-300 hover:-translate-y-0.5 hover:bg-red-700"
+          >
+            <span>Add Domain Now</span>
+            <ChevronDown className="h-4 w-4 -rotate-90 transition-transform duration-300 group-hover:translate-x-1" />
+          </Link>
+        </div>
+      </div>
+    </div>
+
+    {/* Shadow that moves with the float */}
+    <div className="handkerchief-shadow absolute -bottom-2 left-1/2 h-3 w-[90%] -translate-x-1/2 rounded-full bg-black/10 blur-md" />
+
+    <style jsx>{`
+      .handkerchief-float {
+        animation: floatX 3s ease-in-out infinite;
+        will-change: transform;
+      }
+
+      .handkerchief-shadow {
+        animation: shadowFloat 3s ease-in-out infinite;
+      }
+
+      @keyframes floatX {
+        0% {
+          transform: translateX(0px) translateY(0px);
+        }
+        25% {
+          transform: translateX(8px) translateY(-3px);
+        }
+        50% {
+          transform: translateX(-8px) translateY(-5px);
+        }
+        75% {
+          transform: translateX(4px) translateY(-3px);
+        }
+        100% {
+          transform: translateX(0px) translateY(0px);
+        }
+      }
+
+      @keyframes shadowFloat {
+        0% {
+          width: 90%;
+          opacity: 0.15;
+          transform: translateX(-50%);
+        }
+        25% {
+          width: 85%;
+          opacity: 0.1;
+          transform: translateX(-45%);
+        }
+        50% {
+          width: 95%;
+          opacity: 0.2;
+          transform: translateX(-55%);
+        }
+        75% {
+          width: 88%;
+          opacity: 0.12;
+          transform: translateX(-48%);
+        }
+        100% {
+          width: 90%;
+          opacity: 0.15;
+          transform: translateX(-50%);
+        }
+      }
+
+      /* Fabric wave texture at bottom */
+      .handkerchief-float::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(239, 68, 68, 0.15) 20%,
+          rgba(239, 68, 68, 0.08) 50%,
+          rgba(239, 68, 68, 0.15) 80%,
+          transparent 100%
+        );
+        animation: fabricShimmer 3s ease-in-out infinite;
+      }
+
+      @keyframes fabricShimmer {
+        0%, 100% {
+          opacity: 0.3;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+    `}</style>
+  </div>
+)}
 
         <MonthlyOverviewCard
           remaining={toNum(derived.remainMails.remain)}

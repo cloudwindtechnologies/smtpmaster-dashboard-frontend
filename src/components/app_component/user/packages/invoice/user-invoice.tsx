@@ -163,10 +163,14 @@ function firstValidationMsg(err: any): string {
   return "";
 }
 
+function roundMoney(n: number): number {
+  return Math.round(Number(n) || 0);
+}
+
 function money(n: number) {
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  return roundMoney(n).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
 }
 
@@ -689,12 +693,18 @@ export default function PackageDetailsPage() {
     return usd;
   };
 
-  const planPrice = toDisplay(baseUsd);
-  const subTotalAfterCoupon = toDisplay(payableUsd);
-  const discountAmount = Math.max(0, planPrice - subTotalAfterCoupon);
-  const paymentFee = !isIndia && paymentMethod === "crypto" ? subTotalAfterCoupon * CRYPTO_EXTRA_RATE : 0;
-  const tax = isIndia ? (subTotalAfterCoupon + paymentFee) * 0.18 : 0;
-  const total = subTotalAfterCoupon + paymentFee + tax;
+const planPrice = roundMoney(toDisplay(baseUsd));
+const subTotalAfterCoupon = roundMoney(toDisplay(payableUsd));
+const discountAmount = roundMoney(Math.max(0, planPrice - subTotalAfterCoupon));
+const paymentFee = roundMoney(
+  !isIndia && paymentMethod === "crypto"
+    ? subTotalAfterCoupon * CRYPTO_EXTRA_RATE
+    : 0
+);
+const tax = roundMoney(
+  isIndia ? (subTotalAfterCoupon + paymentFee) * 0.18 : 0
+);
+const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
 
   const featureList = splitList(pkg?.features);
   const hideBuy = toBool(pkg?.hide_buy_btn);
@@ -954,9 +964,9 @@ export default function PackageDetailsPage() {
     const payload: Record<string, any> = {
       razorpay_payment_id: razorpayPaymentId,
       plan_id: pkg.id,
-      discountAmount: Number(discountAmount.toFixed(2)),
-      tax: Number(tax.toFixed(2)),
-      
+      discountAmount: roundMoney(discountAmount),
+      tax: roundMoney(tax),
+      amount: roundMoney(total),
     };
 
     if (couponCode.trim()) {
@@ -1177,7 +1187,7 @@ export default function PackageDetailsPage() {
                 )}
               </Card>
 
-              <Card>
+              {/* <Card>
                 <button
                   type="button"
                   onClick={() => setCompanyOpen((v) => !v)}
@@ -1197,7 +1207,7 @@ export default function PackageDetailsPage() {
                     <div>Kolkata</div>
                   </div>
                 )}
-              </Card>
+              </Card> */}
 
               <Card>
                 <div className="text-sm font-medium text-slate-700 mb-3">Billing Address</div>

@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from "react";
 import { Mail, KeyRound, Lock, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function ForgotPasswordPage() {
+  const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
 
@@ -110,8 +112,10 @@ export default function ForgotPasswordPage() {
       return;
     }
 
-    if (password.length < 8) {
-      setMsg("Password must be at least 8 characters.");
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+    if (!passwordRegex.test(password)) {
+      setMsg("Enter a combination of at least 8 numbers, letters and punctuation marks (such as ! and &).");
       setLoading(false);
       return;
     }
@@ -141,6 +145,7 @@ export default function ForgotPasswordPage() {
       if (res.ok) {
         setIsSuccess(true);
         setMsg(data.message || "Password reset successfully. You can now login.");
+        router.replace("/login");
       } else {
         setIsSuccess(false);
         setMsg(data.message || "Reset failed.");

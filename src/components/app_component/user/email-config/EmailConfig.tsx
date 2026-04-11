@@ -1910,7 +1910,7 @@ curl_close(<span class="text-orange-300">$ch</span>);
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
-            onClick={() => router.push("/support-ticket")}
+            onClick={() => router.push("https://smtpmaster.tawk.help")}
             className="inline-flex h-11 items-center justify-center rounded-xl border border-[#ff7800] bg-white px-6 text-sm font-semibold text-[#ff7800] transition hover:bg-orange-50"
           >
             Raise Support Ticket
