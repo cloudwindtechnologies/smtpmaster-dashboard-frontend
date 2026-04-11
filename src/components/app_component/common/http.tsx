@@ -25,6 +25,7 @@ const envBackendUrl =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "https://bak.way2inboxs.com";
 
+
 export const apiURL = 'https://bak.way2inboxs.com';
 
 export const token = (): string | null => {
