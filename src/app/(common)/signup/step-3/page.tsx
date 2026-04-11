@@ -207,7 +207,7 @@ export default function ProfileSetupPage() {
                   Profile Setup
                 </h1>
                 <p className="text-sm text-white/90">
-                  Step 3 of 5: Complete your profile information
+                  Step 3 of 7: Complete your profile information
                 </p>
               </div>
             </div>
