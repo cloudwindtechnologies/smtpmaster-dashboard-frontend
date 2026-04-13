@@ -4,26 +4,92 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/app/context/UserContext";
 
+const AUTH_LOCAL_STORAGE_KEYS = [
+  "token",
+  "role",
+  "wheretogo",
+  "userData",
+  "filldata",
+  "user_token",
+  "superadmin_token",
+  "superadmin_role",
+  "admin_token_backup",
+  "is_impersonating",
+  "impersonated_user_id",
+  "imp_user_id",
+  "gmail",
+];
+
+const AUTH_SESSION_STORAGE_KEYS = [
+  "tab_session",
+  "is_impersonated",
+  "impersonate_token",
+  "impersonated_user_id",
+  "onboarding_filldata",
+  "auth_bootstrapping",
+  "pending_redirect",
+  "wheretogo",
+  "TAB_ALIVE_SMTPMASTER",
+];
+
+const AUTH_COOKIE_NAMES = ["token", "role"];
+
+function clearAuthCookie(name: string) {
+  const domain = window.location.hostname;
+  const expiredAt = "Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+  document.cookie = `${name}=; Path=/; ${expiredAt}; SameSite=Lax`;
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+
+  if (domain && domain !== "localhost") {
+    document.cookie = `${name}=; Path=/; Domain=${domain}; ${expiredAt}; SameSite=Lax`;
+    document.cookie = `${name}=; Path=/; Domain=${domain}; Max-Age=0; SameSite=Lax`;
+  }
+}
+
+function clearAuthCookies() {
+  AUTH_COOKIE_NAMES.forEach((name) => clearAuthCookie(name));
+}
+
+function clearClientAuth() {
+  AUTH_LOCAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+  AUTH_SESSION_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
+  clearAuthCookies();
+}
+
+async function logoutFromServer(token: string | null) {
+  if (!token) return;
+
+  await fetch("/api/auth/logout", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  }).catch(() => {});
+}
+
 export default function LogoutPage() {
   const router = useRouter();
   const { clearUser } = useUser();
 
   useEffect(() => {
     (async () => {
-      const isImpersonated = sessionStorage.getItem("is_impersonated") === "true";
-      const token = localStorage.getItem("token");
+      const impersonateToken = sessionStorage.getItem("impersonate_token");
+      const userToken = localStorage.getItem("user_token");
+      const isImpersonated =
+        sessionStorage.getItem("is_impersonated") === "true" ||
+        Boolean(impersonateToken);
+      const token =
+        impersonateToken ||
+        userToken ||
+        localStorage.getItem("superadmin_token") ||
+        localStorage.getItem("token");
 
       if (isImpersonated) {
         // ✅ IMPERSONATED USER LOGOUT - Only clear user session
-        const userToken = localStorage.getItem("user_token");
-        if (userToken) {
-          await fetch("/api/auth/logout", {
-            method: "GET",
-            headers: {
-              authorization: `Bearer ${userToken}`,
-            },
-          }).catch(() => {});
-        }
+        await logoutFromServer(impersonateToken || userToken);
 
         // Clear only user-related data
         localStorage.removeItem("user_token");
@@ -33,10 +99,8 @@ export default function LogoutPage() {
         localStorage.removeItem("filldata");
         localStorage.removeItem("gmail");
 
-        // Clear session storage
-        sessionStorage.removeItem("tab_session");
-        sessionStorage.removeItem("is_impersonated");
-        sessionStorage.removeItem("onboarding_filldata");
+        // Clear session storage - impersonated users need to clear all session keys
+        AUTH_SESSION_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
 
         clearUser();
 
@@ -46,58 +110,23 @@ export default function LogoutPage() {
       } else {
         // ✅ SUPERADMIN LOGOUT - Clear everything
         if (!token) {
-          localStorage.removeItem("role");
-          clearUser();
-          router.replace("/login");
-          return;
+          // Try to logout using httpOnly cookies (if authentication is stored there)
+          await fetch("/api/auth/logout", {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({}),
+          }).catch(() => {});
+        } else {
+          // Call Next API with bearer token
+          await logoutFromServer(token);
         }
 
-        // Call Next API (not Laravel directly)
-        await fetch("/api/auth/logout", {
-          method: "GET",
-          headers: {
-            authorization: `Bearer ${token}`,
-          },
-        }).catch(() => {});
-
-        // // Clear cookies
-        // document.cookie = "token=; Path=/; Max-Age=0; SameSite=Lax";
-        // document.cookie = "role=; Path=/; Max-Age=0; SameSite=Lax";
-        // Delete with same path and domain
-      const domain = window.location.hostname;
-     document.cookie.split(";").forEach((cookie) => {
-      const name = cookie.split("=")[0].trim();
-
-      document.cookie = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `${name}=; Path=/; Max-Age=0`;
-
-      // for localhost domain
-      document.cookie = `${name}=; Path=/; Domain=${domain}; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    });
-
-
-        // Clear ALL client storage
-        localStorage.removeItem("token");
-        localStorage.removeItem("role");
-        localStorage.removeItem("wheretogo");
-        localStorage.removeItem("userData");
-        localStorage.removeItem("filldata");
-        localStorage.removeItem("user_token");
-        localStorage.removeItem("superadmin_token");
-        localStorage.removeItem("superadmin_role");
-        localStorage.removeItem("admin_token_backup");
-        localStorage.removeItem("is_impersonating");
-        localStorage.removeItem("impersonated_user_id");
-        localStorage.removeItem("gmail");
-
-        // Clear session storage
-        sessionStorage.removeItem("tab_session");
-        sessionStorage.removeItem("is_impersonated");
-        sessionStorage.removeItem("onboarding_filldata");
-
+        clearClientAuth();
         clearUser();
-
-        router.replace("/login");
+        window.location.replace("/login");
       }
     })();
   }, [router, clearUser]);

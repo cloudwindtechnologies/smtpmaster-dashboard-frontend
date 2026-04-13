@@ -233,7 +233,7 @@ export default function UsersListTable() {
       setLastPage(1);
       setFrom(0);
       setTo(0);
-      setErrorMessage(err?.message ?? "Failed to load users.");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to load users.");
     } finally {
       setIsLoading(false);
     }

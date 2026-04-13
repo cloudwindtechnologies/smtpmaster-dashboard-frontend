@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
@@ -5,13 +6,21 @@ import { useSearchParams } from "next/navigation";
 import { Loader2, RotateCcw } from "lucide-react";
 import { token as getToken } from "@/components/app_component/common/http";
 import { showToast } from "@/components/app_component/common/toastHelper";
+import {
+  getRouteFromWhereToGo,
+  persistAuthToken,
+  refreshOnboardingStage,
+} from "@/lib/onboarding";
 import Image from "next/image";
+
+const AUTO_EMAIL_OTP_SENT_KEY_PREFIX = "signup_step2_auto_email_otp_sent";
 
 // Helper functions for pending redirect
 function setPendingRedirect(path: string | null) {
   if (typeof window === "undefined") return;
   if (!path) return;
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path.includes("\n") || path.includes("\r")) return;
   if (path === "/login" || path.startsWith("/login?")) return;
   if (path === "/signup" || path.startsWith("/signup")) return;
 
@@ -23,47 +32,72 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
-function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
-  const routes: Record<string, string> = {
-    statp2: "/signup/step-2",
-    statp3: "/signup/step-3",
-    statp4: "/signup/step-4",
-    statp5: "/signup/step-5",
-    statp7: "/signup/step-7",
-    dashboard: "/",
-  };
-
-  return routes[wheretogo || ""] || "/";
+function getAutoEmailOtpSentKey(email: string) {
+  return `${AUTO_EMAIL_OTP_SENT_KEY_PREFIX}:${email.trim().toLowerCase()}`;
 }
 
-// Function to update user stage - calls backend to calculate and get fresh JWT
-async function updateUserStage() {
-  try {
-    const response = await fetch("/api/auth/update-stage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
+function isValidEmailAddress(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
-    if (response.ok) {
-      const data = await response.json();
+type OtpResponse = {
+  message?: string;
+};
 
-      // Update token if backend returns new one
-      if (data.token) {
-        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user_token", data.token);
-        return data.wheretogo;
-      }
-    }
+type ProfileEmailResponse = {
+  data?: {
+    email?: string;
+    login_user_email?: string;
+  };
+  email?: string;
+  login_user_email?: string;
+  message?: string;
+};
 
-    return null;
-  } catch (error) {
-    console.error("Failed to update stage:", error);
-    return null;
+async function fetchSessionEmail(): Promise<string> {
+  const authToken = getToken();
+  const res = await fetch("/api/auth/profileMe", {
+    method: "GET",
+    credentials: "include",
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
+
+  const data = (await res.json().catch(() => ({}))) as ProfileEmailResponse;
+
+  if (!res.ok) {
+    throw new Error(data?.message || "Unable to load session email");
   }
+
+  const sessionEmail =
+    data.data?.login_user_email ||
+    data.data?.email ||
+    data.login_user_email ||
+    data.email ||
+    "";
+
+  if (!isValidEmailAddress(sessionEmail)) {
+    throw new Error("Session email is missing");
+  }
+
+  return sessionEmail.toLowerCase();
+}
+
+async function sendEmailOtp(email: string): Promise<OtpResponse> {
+  const authToken = getToken();
+  const res = await fetch("/api/auth/register/send-otp", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
+    body: JSON.stringify({ dest: email, type: "email" }),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as OtpResponse;
+  if (!res.ok) throw new Error(data?.message || "Failed to send OTP");
+
+  return data;
 }
 
 export default function VerifyEmailPage() {
@@ -81,6 +115,7 @@ function VerifyEmailPageInner() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
+  const [autoSendLoading, setAutoSendLoading] = useState(false);
   const [changeEmailLoading, setChangeEmailLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
@@ -103,9 +138,64 @@ function VerifyEmailPageInner() {
   }, [searchParams]);
 
   useEffect(() => {
-    const stored = localStorage.getItem("gmail") || "";
-    setEmail(stored || "example@gmail.com");
+    let cancelled = false;
+
+    fetchSessionEmail()
+      .then((sessionEmail) => {
+        if (!cancelled) setEmail(sessionEmail);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          showToast("error", err instanceof Error ? err.message : "Unable to load email");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!isValidEmailAddress(normalizedEmail)) return;
+    if (normalizedEmail === "example@gmail.com") return;
+
+    const storageKey = getAutoEmailOtpSentKey(normalizedEmail);
+    const sentAt = Number(sessionStorage.getItem(storageKey) || 0);
+
+    if (sentAt) {
+      const remainingCooldown = 60 - Math.floor((Date.now() - sentAt) / 1000);
+      if (remainingCooldown > 0) {
+        setCooldown((current) => Math.max(current, remainingCooldown));
+      }
+      return;
+    }
+
+    let cancelled = false;
+    sessionStorage.setItem(storageKey, String(Date.now()));
+    setAutoSendLoading(true);
+
+    sendEmailOtp(normalizedEmail)
+      .then((data) => {
+        if (cancelled) return;
+        showToast("success", data?.message || "Code sent!");
+        setCooldown(60);
+      })
+      .catch((err: unknown) => {
+        sessionStorage.removeItem(storageKey);
+        if (!cancelled) {
+          showToast("error", err instanceof Error ? err.message : "Failed to send OTP");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAutoSendLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [email]);
 
   useEffect(() => {
     if (cooldown > 0) {
@@ -119,11 +209,21 @@ function VerifyEmailPageInner() {
     setLoading(true);
 
     try {
+      const authToken = getToken();
+
+      if (!authToken) {
+        throw new Error("Session expired. Please login again.");
+      }
+
+      if (!isValidEmailAddress(email)) {
+        throw new Error("Session email is missing");
+      }
+
       const res = await fetch("/api/auth/register/verify-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ dest: email, otp, type: "email" }),
       });
@@ -135,13 +235,11 @@ function VerifyEmailPageInner() {
 
       // Update token if backend returns new one from verification
       if (data.token) {
-        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user_token", data.token);
+        persistAuthToken(data.token);
       }
 
       // IMPORTANT: Call updateStage to get fresh JWT with calculated wheretogo
-      const wheretogo = await updateUserStage();
+      const wheretogo = await refreshOnboardingStage();
 
       const nextRoute = getRouteFromWhereToGo(wheretogo);
       const pendingRedirect = getPendingRedirect();
@@ -163,17 +261,18 @@ function VerifyEmailPageInner() {
 
   const handleResend = async () => {
     if (cooldown > 0) return;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!isValidEmailAddress(normalizedEmail)) {
+      showToast("error", "Please use a valid email address");
+      return;
+    }
+
     setResendLoading(true);
 
     try {
-      const res = await fetch("/api/auth/register/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dest: email, type: "email" }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || "Failed to resend");
+      await sendEmailOtp(normalizedEmail);
+      sessionStorage.setItem(getAutoEmailOtpSentKey(normalizedEmail), String(Date.now()));
 
       showToast("success", "Code resent!");
       setCooldown(60);
@@ -195,10 +294,13 @@ function VerifyEmailPageInner() {
     try {
       if (authToken) {
         await fetch("/api/auth/logout", {
-          method: "GET",
+          method: "POST",
+          credentials: "include",
           headers: {
             authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
           },
+          body: JSON.stringify({}),
         }).catch(() => {});
       }
     } finally {
@@ -281,15 +383,19 @@ function VerifyEmailPageInner() {
                 <button
                   type="button"
                   onClick={handleResend}
-                  disabled={resendLoading || cooldown > 0}
+                  disabled={autoSendLoading || resendLoading || cooldown > 0}
                   className="inline-flex h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
-                  {resendLoading ? (
+                  {autoSendLoading || resendLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <RotateCcw className="h-4 w-4" />
                   )}
-                  {cooldown > 0 ? `Resend (${cooldown}s)` : "Resend code"}
+                  {autoSendLoading
+                    ? "Sending code..."
+                    : cooldown > 0
+                      ? `Resend (${cooldown}s)`
+                      : "Resend code"}
                 </button>
 
                 <button

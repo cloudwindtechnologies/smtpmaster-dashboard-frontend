@@ -1,6 +1,14 @@
-"use server"
 import { apiURL } from "@/components/app_component/common/http";
 import { NextResponse } from "next/server";
+
+type LoginBackendResponse = {
+  success?: boolean;
+  token?: string;
+  role?: string | number;
+  message?: unknown;
+  error?: unknown;
+  wheretogo?: string;
+};
 
 export async function POST(req: Request) {
   try {
@@ -17,19 +25,20 @@ export async function POST(req: Request) {
 
     const text = await r.text();
     
-    let data: any;
+    let data: LoginBackendResponse;
     try {
       data = JSON.parse(text);
     } catch {
+      console.error("Backend returned non-JSON response:", text.slice(0, 200));
       return NextResponse.json(
-        { success: false, message: "Backend returned non-JSON response", raw: text.slice(0, 200) },
+        { success: false, message: "Backend returned invalid response" },
         { status: 500 }
       );
     }
     
     if (!data?.success || !data?.token || !data?.role) {
       return NextResponse.json(
-        { success: false, message: data?.error || "Invalid login response from backend", data },
+        { success: false, message: data?.error || "Invalid login response from backend" },
         { status: 401 }
       );
     }
@@ -53,7 +62,10 @@ export async function POST(req: Request) {
 
     return response; // ✅ Now we actually return it!
 
-  } catch (e: any) {
-    return NextResponse.json({ success: false, message: e?.message || "Server error" }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { success: false, message: e instanceof Error ? e.message : "Server error" },
+      { status: 500 }
+    );
   }
 }

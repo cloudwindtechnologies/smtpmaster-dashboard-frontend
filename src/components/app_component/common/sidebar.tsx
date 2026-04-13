@@ -127,6 +127,7 @@ export default function SidebarNav({ isMobile = false }: SidebarNavProps) {
     return (
       <Link
         href={item.href || "#"}
+        prefetch={item.href === "/logout" ? false : undefined}
         className={`${baseClass} ${
           item.href && pathname === item.href ? "bg-orange-50 text-orange-500 dark:bg-gray-800" : ""
         }`}

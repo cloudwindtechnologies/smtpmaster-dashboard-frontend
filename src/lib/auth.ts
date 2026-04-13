@@ -5,13 +5,50 @@ export const AUTH_KEYS = {
   IMPERSONATE_TOKEN: 'impersonate_token', // Tab-specific impersonation token
 };
 
-export const normalizeRole = (role: string | number | null | undefined): string | null => {
+export const ROLE_ACCESS = {
+  ADMIN_SHELL: ["superadmin", "admin"],
+} as const;
+
+export type AccessRole = string;
+
+export const getAccessRole = (role: string | number | null | undefined): AccessRole | null => {
   if (role === null || role === undefined) return null;
 
   const normalized = String(role).trim().toLowerCase();
   if (!normalized) return null;
 
-  if (normalized === "superadmin" || normalized === "admin" || normalized === "1") {
+  if (normalized === "1" || normalized === "superadmin") {
+    return "superadmin";
+  }
+
+  if (normalized === "admin") {
+    return "admin";
+  }
+
+  if (normalized === "2" || normalized === "user" || normalized === "customer") {
+    return "user";
+  }
+
+  return normalized;
+};
+
+export const hasAccessRole = (
+  role: string | number | null | undefined,
+  allowedRoles: readonly string[]
+): boolean => {
+  const accessRole = getAccessRole(role);
+  return !!accessRole && allowedRoles.includes(accessRole);
+};
+
+export const canAccessAdminShell = (role: string | number | null | undefined): boolean => {
+  return hasAccessRole(role, ROLE_ACCESS.ADMIN_SHELL);
+};
+
+export const normalizeRole = (role: string | number | null | undefined): string | null => {
+  const accessRole = getAccessRole(role);
+  if (!accessRole) return null;
+
+  if (canAccessAdminShell(accessRole)) {
     return "superadmin";
   }
 
@@ -19,16 +56,18 @@ export const normalizeRole = (role: string | number | null | undefined): string 
 };
 
 export const isSuperadminRole = (role: string | number | null | undefined): boolean => {
-  return normalizeRole(role) === "superadmin";
+  return getAccessRole(role) === "superadmin";
 };
+
+export const hasAdminShellAccess = canAccessAdminShell;
 
 // Store tab-specific session type in sessionStorage
 export const getTabSession = (): 'superadmin' | 'user' => {
   if (typeof window === 'undefined') return 'superadmin';
   
   // Check explicit tab session first
-  const explicit = sessionStorage.getItem('tab_session') as 'superadmin' | 'user' | null;
-  if (explicit) return explicit;
+  const explicit = sessionStorage.getItem('tab_session');
+  if (explicit === 'superadmin' || explicit === 'user') return explicit;
   
   return 'superadmin';
 };
@@ -39,13 +78,21 @@ export const setTabSession = (type: 'superadmin' | 'user'): void => {
 
 export const getToken = (): string | null => {
   if (typeof window === 'undefined') return null;
+
+  const impersonationToken = sessionStorage.getItem(AUTH_KEYS.IMPERSONATE_TOKEN);
+
+  if (impersonationToken) {
+    setTabSession('user');
+    return impersonationToken;
+  }
   
   const tabSession = getTabSession();
   
   if (tabSession === 'user') {
     // ✅ Check sessionStorage first (impersonation), then localStorage (regular user)
-    return sessionStorage.getItem(AUTH_KEYS.IMPERSONATE_TOKEN) || 
-           localStorage.getItem(AUTH_KEYS.USER_TOKEN);
+    if (normalizeRole(localStorage.getItem('role')) !== 'superadmin') {
+      return localStorage.getItem(AUTH_KEYS.USER_TOKEN);
+    }
   }
   
   return localStorage.getItem(AUTH_KEYS.SUPERADMIN_TOKEN) || localStorage.getItem('token');
@@ -65,13 +112,16 @@ export const isUserTab = (): boolean => {
   if (sessionStorage.getItem('tab_session') === 'user') return true;
   
   // Check if impersonation token exists in this tab
-  if (sessionStorage.getItem('impersonate_token')) {
+  if (sessionStorage.getItem(AUTH_KEYS.IMPERSONATE_TOKEN)) {
     setTabSession('user');
     return true;
   }
   
   // Legacy check (for regular users, not impersonation)
-  if (localStorage.getItem(AUTH_KEYS.USER_TOKEN)) {
+  if (
+    localStorage.getItem(AUTH_KEYS.USER_TOKEN) &&
+    normalizeRole(localStorage.getItem('role')) !== 'superadmin'
+  ) {
     setTabSession('user');
     return true;
   }
@@ -85,10 +135,22 @@ export const isSuperadminTab = (): boolean => {
 
 // Set superadmin session (called at login)
 export const setSuperadminSession = (token: string, role: string): void => {
+  const normalizedRole = normalizeRole(role);
+  if (!normalizedRole) {
+    throw new Error('Invalid role provided to setSuperadminSession');
+  }
+
+  localStorage.removeItem(AUTH_KEYS.USER_TOKEN);
+  localStorage.removeItem('is_impersonating');
+  localStorage.removeItem('impersonated_user_id');
+  localStorage.removeItem('imp_user_id');
+  sessionStorage.removeItem(AUTH_KEYS.IMPERSONATE_TOKEN);
+  sessionStorage.removeItem('is_impersonated');
+  sessionStorage.removeItem('impersonated_user_id');
   localStorage.setItem(AUTH_KEYS.SUPERADMIN_TOKEN, token);
-  localStorage.setItem(AUTH_KEYS.SUPERADMIN_ROLE, role);
+  localStorage.setItem(AUTH_KEYS.SUPERADMIN_ROLE, normalizedRole);
+  localStorage.setItem('role', normalizedRole);
   localStorage.setItem('token', token);
-  localStorage.setItem('role', normalizeRole(role) || role);
   setTabSession('superadmin');
 };
 

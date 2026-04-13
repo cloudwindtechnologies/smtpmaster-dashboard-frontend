@@ -290,6 +290,7 @@ export default function SuperAdminSidebar({ isMobile = false }: SidebarNavProps)
     return (
       <Link
         href={item.href || "#"}
+        prefetch={item.href === "/logout" ? false : undefined}
         className={`${baseClass} ${
           isActive ? "bg-orange-50 text-orange-500 dark:bg-gray-800" : ""
         }`}

@@ -11,10 +11,10 @@ import Link from "next/link";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import SuperAdminMobileSidebar from "./superAdminMobile";
-import MobileSidebar from "./monile-sidebar";
+import MobileSidebar from "./mobile-sidebar";
 import { useUser } from "@/app/context/UserContext";
 import toast from "react-hot-toast";
-import { AUTH_KEYS, isSuperadminRole, normalizeRole } from "@/lib/auth";
+import { AUTH_KEYS, canAccessAdminShell } from "@/lib/auth";
 
 // ===== Helpers =====
 const getInitials = (name: string | null): string => {
@@ -63,14 +63,13 @@ const clearImpersonationEverywhere = () => {
 };
 
 export default function Header() {
-  const [role, setRole] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [tabType, setTabType] = useState<"superadmin" | "user">("superadmin");
   const [isImpersonating, setIsImpersonating] = useState(false); // ✅ Add this
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { user, loading } = useUser();
+  const canUseAdminShell = canAccessAdminShell(user?.login_user_role_id);
   const handleExitImpersonation = (e: React.MouseEvent) => {
   e.preventDefault();
 
@@ -96,7 +95,6 @@ export default function Header() {
   }
 
   setIsImpersonating(false);
-  setTabType("superadmin");
   toast.success("Exited impersonation mode");
   
   // Hard reload to clear all React state
@@ -116,7 +114,6 @@ export default function Header() {
   useEffect(() => {
     const wasImpersonating =
       localStorage.getItem("is_impersonating") === "1" ||
-      !!localStorage.getItem("user_token") ||
       !!localStorage.getItem("impersonated_user_id");
 
     const tabAlive = sessionStorage.getItem(TAB_ALIVE_KEY) === "1";
@@ -130,11 +127,6 @@ export default function Header() {
 
   // ✅ Role + tabType detection (CLIENT-SIDE ONLY)
   useEffect(() => {
-    const roleData =
-      normalizeRole(localStorage.getItem(AUTH_KEYS.SUPERADMIN_ROLE)) ||
-      normalizeRole(localStorage.getItem("role"));
-    setRole(roleData);
-
     checkTabType();
 
     const handleStorageChange = () => checkTabType();
@@ -159,11 +151,8 @@ export default function Header() {
     
     const impersonateToken = sessionStorage.getItem('impersonate_token');
     const isImp = sessionStorage.getItem('is_impersonated') === 'true';
-    const userToken = localStorage.getItem('user_token');
     
-    const isUser = !!(impersonateToken || isImp || userToken);
     
-    setTabType(isUser ? 'user' : 'superadmin');
     setIsImpersonating(!!(impersonateToken || isImp)); // ✅ Update impersonation state
   };
 
@@ -173,7 +162,7 @@ export default function Header() {
     return (
       <header className="flex items-center justify-between border-b bg-card px-4 py-3 sm:px-6 sm:py-4 sticky top-0 z-40">
         <div className="flex items-center gap-4">
-          {isSuperadminRole(role) ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
+          {canUseAdminShell ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
@@ -205,7 +194,7 @@ export default function Header() {
       <header className="flex items-center justify-between border-b bg-card px-4 py-3 sm:px-6 sm:py-4 sticky top-0 z-40">
         {/* ... keep rest of your header code exactly the same ... */}
         <div className="flex items-center gap-4">
-          {isSuperadminRole(role) ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
+          {canUseAdminShell ? <SuperAdminMobileSidebar /> : <MobileSidebar />}
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
@@ -263,7 +252,7 @@ export default function Header() {
                   </Link>
 
                   <Link
-                    href="/my-accounts"
+                    href="/settings"
                     onClick={() => setDropdownOpen(false)}
                     className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
                   >
@@ -275,6 +264,7 @@ export default function Header() {
 
                   <Link
                     href='/logout'
+                    prefetch={false}
                     className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg text-red-600 hover:bg-red-50 transition-colors"
                   >
                     <LogOut className="h-4 w-4" />

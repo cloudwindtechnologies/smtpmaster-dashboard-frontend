@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Users, Contact, ShoppingCart, Loader2, ArrowLeft } from "lucide-react";
 import Image from "next/image";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { token as getToken } from "@/components/app_component/common/http";
+import {
+  getRouteFromWhereToGo,
+  refreshOnboardingStage,
+} from "@/lib/onboarding";
 
 type FormState = {
   hmpiyt: string;
@@ -13,12 +16,13 @@ type FormState = {
   sellonline: boolean | null;
 };
 
+const CONTACTS_UNBOUNDED_VALUE = "5001";
+
 function getDisplayValue(range: string, storedValue: string) {
   if (!storedValue) return "";
   
   // Handle the 51+ case
   if (storedValue === "51") return "51+";
-  if (storedValue === "5000") return "5000+";
   
   // For ranges like 0-1, 2-10, 11-50
   if (range.includes("-")) {
@@ -35,7 +39,7 @@ function getDisplayValue(range: string, storedValue: string) {
     "1-300": "300",
     "301-1000": "1000",
     "1001-5000": "5000",
-    "5000+": "5000"
+    "5000+": CONTACTS_UNBOUNDED_VALUE,
   };
   
   for (const [key, value] of Object.entries(ranges)) {
@@ -48,7 +52,7 @@ function getDisplayValue(range: string, storedValue: string) {
 function getMaxValue(range: string) {
   if (!range) return "";
   if (range === "51+") return "51";
-  if (range === "5000+") return "5000";
+  if (range === "5000+") return CONTACTS_UNBOUNDED_VALUE;
   if (range.includes("-")) {
     const parts = range.split("-");
     return parts[1] || "";
@@ -60,6 +64,7 @@ function setPendingRedirect(path: string | null) {
   if (typeof window === "undefined") return;
   if (!path) return;
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path.includes("\n") || path.includes("\r")) return;
   if (path === "/login" || path.startsWith("/login?")) return;
   if (path === "/signup" || path.startsWith("/signup")) return;
 
@@ -71,51 +76,7 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
-function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
-  const routes: Record<string, string> = {
-    statp2: "/signup/step-2",
-    statp3: "/signup/step-3",
-    statp4: "/signup/step-4",
-    statp5: "/signup/step-5",
-    statp7: "/signup/step-7",
-    dashboard: "/",
-  };
-
-  return routes[wheretogo || ""] || "/";
-}
-
-// Function to update user stage - calls backend to calculate and get fresh JWT
-async function updateUserStage() {
-  try {
-    const response = await fetch("/api/auth/update-stage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-
-      if (data.token) {
-        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user_token", data.token);
-        return data.wheretogo;
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Failed to update stage:", error);
-    return null;
-  }
-}
-
 export default function OtherInfoPage() {
-  const router = useRouter();
-
   const [form, setForm] = useState<FormState>({
     hmpiyt: "",
     hmcdh: "",
@@ -125,7 +86,6 @@ export default function OtherInfoPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -156,19 +116,23 @@ export default function OtherInfoPage() {
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     setApiError("");
-    setSuccessMsg("");
 
     if (!validate()) return;
 
     try {
       setLoading(true);
+      const authToken = getToken();
+
+      if (!authToken) {
+        throw new Error("Session expired. Please login again.");
+      }
 
       const res = await fetch("/api/auth/register/update-profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          Authorization: `Bearer ${getToken()}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(payload),
       });
@@ -180,10 +144,9 @@ export default function OtherInfoPage() {
       }
       
       showToast("success", data?.message || "Saved successfully!");
-      setSuccessMsg(data?.message || "Saved successfully!");
 
       // Call updateStage to get fresh JWT with calculated wheretogo
-      const wheretogo = await updateUserStage();
+      const wheretogo = await refreshOnboardingStage();
 
       const nextRoute = getRouteFromWhereToGo(wheretogo);
       const pendingRedirect = getPendingRedirect();
@@ -196,8 +159,8 @@ export default function OtherInfoPage() {
           window.location.href = nextRoute;
         }
       }, 100);
-    } catch (err: any) {
-      setApiError(err?.message || "Failed to save");
+    } catch (err: unknown) {
+      setApiError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setLoading(false);
     }
