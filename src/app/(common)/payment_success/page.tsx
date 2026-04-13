@@ -3,47 +3,22 @@
 import Header from '@/components/app_component/common/header';
 import SidebarNav from '@/components/app_component/common/sidebar';
 import SuperAdminSidebar from '@/components/app_component/common/super-admin-sidebar';
-import { AUTH_KEYS, isUserTab } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
+import { useUser } from '@/app/context/UserContext';
+import { canAccessAdminShell } from '@/lib/auth';
 import { useEffect, useState } from 'react';
-import { CheckCircle, ArrowRight, Home, Sparkles, PartyPopper, Star, ArrowLeft } from 'lucide-react';
+import { CheckCircle, ArrowRight, Home, Star } from 'lucide-react';
 import Link from 'next/link';
 
 export default function PaymentSuccessPage() {
-    const router = useRouter();
-    const [role, setRole] = useState<string | null>(null);
-    const [tabType, setTabType] = useState<'superadmin' | 'user'>('superadmin');
+    const { user } = useUser();
     const [isAnimating, setIsAnimating] = useState(true);
-    const [isClient, setIsClient] = useState(false);
+    const canUseAdminShell = canAccessAdminShell(user?.login_user_role_id);
 
     useEffect(() => {
-        setIsClient(true);
-        
-        if (isUserTab()) {
-            setTabType('user');
-            const userToken = localStorage.getItem(AUTH_KEYS.USER_TOKEN);
-            
-            if (!userToken) {
-                router.push("/login");
-                return;
-            }
-            setRole('user');
-        } else {
-            setTabType('superadmin');
-            const superadminToken = localStorage.getItem(AUTH_KEYS.SUPERADMIN_TOKEN) || localStorage.getItem("token");
-            const storedRole = localStorage.getItem("role");
-            
-            if (!superadminToken || !storedRole) {
-                router.push("/login");
-                return;
-            }
-            setRole(storedRole);
-        }
-
         // Stop animation after 3 seconds
         const timer = setTimeout(() => setIsAnimating(false), 3000);
         return () => clearTimeout(timer);
-    }, [router]);
+    }, []);
 
     // Pre-defined confetti positions to avoid random values
     const confettiPositions = [
@@ -79,7 +54,7 @@ export default function PaymentSuccessPage() {
                 <div className="absolute bottom-20 left-20 w-80 h-80 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-4000"></div>
                 
                 {/* Confetti Effect - Only render on client with fixed positions */}
-                {isClient && isAnimating && confettiPositions.map((pos, i) => (
+                {isAnimating && confettiPositions.map((pos, i) => (
                     <div
                         key={i}
                         className="absolute w-2 h-2 bg-orange-500 rounded-full animate-confetti"
@@ -97,7 +72,7 @@ export default function PaymentSuccessPage() {
             <div className="flex h-full relative">
                 {/* Sidebar - Independent scroll with no horizontal scroll */}
                 <div className="hidden lg:block w-64 h-full overflow-y-auto overflow-x-hidden bg-white/50 backdrop-blur-sm border-r border-orange-100">
-                    {role === "superadmin" ? <SuperAdminSidebar /> : <SidebarNav />}
+                    {canUseAdminShell ? <SuperAdminSidebar /> : <SidebarNav />}
                 </div>
 
                 {/* Main Content Area - Independent scroll */}
@@ -186,6 +161,8 @@ export default function PaymentSuccessPage() {
 
                                             <Link 
                                                 href="https://smtpmaster.tawk.help/"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
                                                 className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 rounded-2xl p-6 transition-all duration-300 hover:scale-105"
                                             >
                                                 <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-amber-500 opacity-0 group-hover:opacity-10 transition-opacity"></div>

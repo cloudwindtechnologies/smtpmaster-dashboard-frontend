@@ -70,17 +70,6 @@ function formatDate(dateStr?: string) {
   });
 }
 
-function addDays(dateStr?: string, days = 5) {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return "-";
-  d.setDate(d.getDate() + days);
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
 
 function titleCase(text?: string | null) {
   if (!text) return "-";
@@ -341,15 +330,15 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
       {!loading && !err && invoice && (
         <div className="max-w-4xl mx-auto bg-white shadow-lg print:shadow-none relative">
           {/* Header Section */}
-          <div className="relative w-full h-[120px] sm:h-[170px] flex overflow-hidden">
+          <div className="relative w-full h-[120px] sm:h-[170px] font-bold flex overflow-hidden">
             {/* LEFT WHITE (with angle cut) */}
             <div
-              className="absolute left-0 top-0 h-full w-[65%] sm:w-[60%] bg-white z-10"
+              className="absolute left-0 top-0 mr-2 h-full sm:w-[60%] bg-white z-10"
               style={{
-                clipPath: "polygon(0 0, 85% 0, 70% 100%, 0% 100%)",
+                clipPath: "polygon(0 0, 100% 0, 85% 110%, 0% 100%)",
               }}
             >
-              <div className="h-full flex items-center px-3 sm:px-4">
+              <div className="h-full flex flex-col justify-center  px-3 sm:px-4">
                 <div className="relative w-[250px] sm:w-[350px] md:w-[400px] h-[50px] sm:h-[70px] md:h-[80px]">
                   <Image
                     src="/CloudwindLogo.png"
@@ -359,21 +348,24 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
                     priority
                     unoptimized
                   />
+                 
                 </div>
+                 <p className="truncate">CLOUDWIND TECHNOLOGIES LLP</p>
+                 <p className="truncate">CERTIFIED BY STARTUP INDIA-DIPP68039, GOVT. OF INDIA</p>
               </div>
             </div>
 
             {/* RIGHT BLUE */}
-            <div className="w-full h-full bg-blue-600 flex justify-end items-center px-3 sm:px-6 text-white text-right">
-              <div className="w-[55%] sm:w-[45%] text-white px-2 sm:px-5 py-2 sm:py-4 text-right text-[10px] sm:text-xs space-y-0.5 sm:space-y-1 leading-4 sm:leading-5">
-                <p className="truncate">{company.phone}</p>
-                <p className="truncate hidden xs:block">{company.llp}</p>
-                <p className="truncate">{company.website}</p>
-                <p className="truncate">{company.email}</p>
-                <p className="mt-1 text-[9px] sm:text-xs leading-3 sm:leading-4 line-clamp-3 sm:line-clamp-none">
-                  {company.office}
+            <div className="w-full h-full bg-blue-600 flex justify-end items-center sm:px-6 text-white text-right">
+              <div className="w-[55%] sm:w-[45%] text-white py-2 sm:py-4 text-right text-[10px] sm:text-xs space-y-0.5 sm:space-y-1 leading-4 sm:leading-5">
+                <p className="truncate text-[1.01rem] ">{company.phone}</p>
+                <p className="truncate text-[1.01rem] hidden xs:block">{company.llp}</p>
+                <p className="truncate text-[1.01rem]">{company.website}</p>
+                <p className="truncate text-[1.01rem]">{company.email}</p>
+                <p className="mt-1  text-[1.01rem]  ">
+                  "OFFICE:- 5, Shahid Khudiram Bose Sarani,<br /> Opposite Ajanta Apartment Ichapur, <br /> Howrah, West Bengal, India, 711104",
                 </p>
-                <p className="truncate">{company.gstin}</p>
+                <p className="truncate text-[1.01rem] mb-1">{company.gstin}</p>
               </div>
             </div>
           </div>
@@ -429,7 +421,7 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
                 </div>
                 <div className="flex justify-start sm:justify-end">
                   <span className="font-bold w-24 sm:w-32 flex-shrink-0">Due Date:</span>
-                  <span className="sm:w-48">{addDays(invoice.created_on, 5)}</span>
+                  <span className="sm:w-48">{formatDate(invoice.created_on)}</span>
                 </div>
               </div>
             </div>

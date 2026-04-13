@@ -7,13 +7,6 @@ function getCookieValue(cookieHeader: string, key: string): string {
 }
 
 function getAuthToken(req: Request): string {
-  const cookie = req.headers.get("cookie") || "";
-  const cookieToken = getCookieValue(cookie, "token");
-
-  if (cookieToken) {
-    return cookieToken;
-  }
-
   const authHeader = req.headers.get("authorization") || "";
   const bearerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
 
@@ -21,7 +14,8 @@ function getAuthToken(req: Request): string {
     return bearerToken;
   }
 
-  return "";
+  const cookie = req.headers.get("cookie") || "";
+  return getCookieValue(cookie, "token");
 }
 
 export async function POST(req: Request) {

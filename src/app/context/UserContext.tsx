@@ -2,7 +2,7 @@
 
 import { token } from "@/components/app_component/common/http";
 import { usePathname, useRouter } from "next/navigation";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 export type User = {
   login_user_id: number;
@@ -31,6 +31,27 @@ type UserContextType = {
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
+const PUBLIC_USER_ROUTES = ["/login", "/signup", "/forgot-password", "/forgot_password", "/unauthorized"];
+
+function clearStoredAuth() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("role");
+  localStorage.removeItem("user_token");
+  localStorage.removeItem("superadmin_token");
+  localStorage.removeItem("superadmin_role");
+  localStorage.removeItem("admin_token_backup");
+  localStorage.removeItem("is_impersonating");
+  localStorage.removeItem("impersonated_user_id");
+  localStorage.removeItem("imp_user_id");
+  localStorage.removeItem("wheretogo");
+
+  sessionStorage.removeItem("auth_bootstrapping");
+  sessionStorage.removeItem("tab_session");
+  sessionStorage.removeItem("impersonate_token");
+  sessionStorage.removeItem("is_impersonated");
+  sessionStorage.removeItem("impersonated_user_id");
+  sessionStorage.removeItem("wheretogo");
+}
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -39,9 +60,8 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
 
-  const publicRoutes = ["/login", "/signup", "/forgot-password", "/forgot_password", "/unauthorized"];
   const isPublicRoute =
-    publicRoutes.includes(pathname) ||
+    PUBLIC_USER_ROUTES.includes(pathname) ||
     pathname.startsWith("/signup/");
 
   const startLoading = () => {
@@ -54,22 +74,37 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     setLoading(false);
   };
 
-  const fetchUser:any = async () => {
-    const authToken = token();
+  const logoutInvalidSession = useCallback(async () => {
+    clearStoredAuth();
+    setUser(null);
 
-    if (!authToken) {
-      setUser(null);
-      setLoading(false);
-      return;
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Failed to clear invalid session", error);
     }
+
+    if (!isPublicRoute) {
+      router.replace("/login?error=invalid_session");
+    }
+  }, [isPublicRoute, router]);
+
+  const fetchUser = useCallback(async () => {
+    const authToken = token();
 
     setLoading(true);
 
     try {
       const res = await fetch("/api/auth/profileMe", {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+        credentials: "include",
+        headers: authToken
+          ? {
+              Authorization: `Bearer ${authToken}`,
+            }
+          : {},
       });
 
       if (!res.ok) {
@@ -79,38 +114,44 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
           await new Promise((resolve) => setTimeout(resolve, 250));
 
           const retryRes = await fetch("/api/auth/profileMe", {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-            },
+            credentials: "include",
+            headers: authToken
+              ? {
+                  Authorization: `Bearer ${authToken}`,
+                }
+              : {},
           });
 
           if (retryRes.ok) {
             const retryData = await retryRes.json();
-            sessionStorage.removeItem("auth_bootstrapping");
-            setUser(retryData.data ?? null);
-            return;
+            if (retryData?.data) {
+              sessionStorage.removeItem("auth_bootstrapping");
+              setUser(retryData.data);
+              return;
+            }
           }
         }
 
-        sessionStorage.removeItem("auth_bootstrapping");
-        setUser(null);
-
-        if (!isPublicRoute) {
-          router.push("/login");
-        }
+        await logoutInvalidSession();
         return;
       }
 
       const data = await res.json();
       sessionStorage.removeItem("auth_bootstrapping");
-      setUser(data.data ?? null);
+
+      if (!data?.data) {
+        await logoutInvalidSession();
+        return;
+      }
+
+      setUser(data.data);
     } catch (err) {
       console.error("Failed to load user", err);
       setUser(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [logoutInvalidSession]);
 
   useEffect(() => {
     if (isPublicRoute) {
@@ -129,7 +170,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       window.removeEventListener("user-login", handleUserLogin);
     };
-  }, [pathname]);
+  }, [fetchUser, isPublicRoute]);
 
   return (
     <UserContext.Provider

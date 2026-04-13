@@ -21,7 +21,7 @@ export default function Home() {
     const r = localStorage.getItem("role")
 
     if (!t || !r) {
-      router.replace("/login") // ✅ replace = no back navigation
+      router.replace("/login") // âœ… replace = no back navigation
       return
     }
 

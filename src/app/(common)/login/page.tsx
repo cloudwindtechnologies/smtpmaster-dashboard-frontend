@@ -13,10 +13,54 @@ type LoginResponse = {
   role?: string;
   wheretogo?: string;
   success?: boolean;
-  message?: string;
-  gmail?: string;
-  
+  message?: unknown;
+  error?: unknown;
+  data?: {
+    message?: unknown;
+    error?: unknown;
+  };
 };
+
+function getFirstText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const message = value.trim();
+    return message || null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const message = getFirstText(item);
+      if (message) return message;
+    }
+    return null;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+
+    for (const key of ["message", "error", "errors", "password", "email"]) {
+      const message = getFirstText(record[key]);
+      if (message) return message;
+    }
+
+    for (const item of Object.values(record)) {
+      const message = getFirstText(item);
+      if (message) return message;
+    }
+  }
+
+  return null;
+}
+
+function getLoginErrorMessage(data: LoginResponse): string {
+  return (
+    getFirstText(data.message) ??
+    getFirstText(data.error) ??
+    getFirstText(data.data?.error) ??
+    getFirstText(data.data?.message) ??
+    "Login failed"
+  );
+}
 
 function getRedirectPathFromWhereToGo(wheretogo?: string | null): string {
   const key = (wheretogo || "").toLowerCase().trim();
@@ -43,7 +87,9 @@ function isSafeRedirectPath(path: string | null): boolean {
   return (
     path.startsWith("/") &&
     !path.startsWith("//") &&
-    !path.includes("://")
+    !path.includes("://") &&
+    !path.includes("\n") &&
+    !path.includes("\r")
   );
 }
 
@@ -107,26 +153,40 @@ const onLogin = async (e: React.FormEvent) => {
     const data = (await res.json()) as LoginResponse;
     
     if (!res.ok || !data?.success || !data?.token) {
-      showToast('error', data?.message || "Login failed");
+      showToast("error", getLoginErrorMessage(data));
       return;
     } else {
-      showToast("success", data.message || 'login success');
+      showToast("success", getFirstText(data.message) || "Login successful");
     }
 
     const role = normalizeRole(data.role) || "";
 
+    sessionStorage.removeItem("impersonate_token");
+    sessionStorage.removeItem("is_impersonated");
+    sessionStorage.removeItem("impersonated_user_id");
+    sessionStorage.removeItem("wheretogo");
+
     if (role !== "superadmin") {
+      localStorage.removeItem("superadmin_token");
+      localStorage.removeItem("superadmin_role");
+      localStorage.removeItem("admin_token_backup");
+      localStorage.removeItem("is_impersonating");
+      localStorage.removeItem("impersonated_user_id");
+      localStorage.removeItem("imp_user_id");
       localStorage.setItem("user_token", data.token);
       localStorage.setItem("token", data.token);
       localStorage.setItem("role", role);
       setTabSession("user");
     } else {
+      localStorage.removeItem("user_token");
+      localStorage.removeItem("is_impersonating");
+      localStorage.removeItem("impersonated_user_id");
+      localStorage.removeItem("imp_user_id");
       localStorage.setItem("superadmin_token", data.token);
       localStorage.setItem("token", data.token);
       setSuperadminSession(data.token, role);
     }
 
-    localStorage.setItem("gmail", email || "");
     if (data.wheretogo) {
       localStorage.setItem("wheretogo", data.wheretogo);
     }

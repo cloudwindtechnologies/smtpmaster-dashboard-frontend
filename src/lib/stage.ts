@@ -1,23 +1,7 @@
 // lib/stage.ts
 
-// Get token from localStorage
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
-}
-
-// Save new token to localStorage and cookie
-function setToken(token: string): void {
-  if (typeof window === "undefined") return;
-  
-  // Save to localStorage
-  localStorage.setItem("token", token);
-  
-  // Save to cookie (for middleware)
-  document.cookie = `token=${encodeURIComponent(token)}; Path=/; Max-Age=${
-    60 * 60 * 24 * 7
-  }; SameSite=Lax`;
-}
+import { getToken } from "@/lib/auth";
+import { isImpersonationSession, persistAuthToken } from "@/lib/onboarding";
 
 // Main function: Call this when user completes a step
 export async function updateUserStage(newStage: string): Promise<string | null> {
@@ -30,9 +14,11 @@ export async function updateUserStage(newStage: string): Promise<string | null> 
 
     const response = await fetch("/api/auth/update-stage", {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        ...(isImpersonationSession() ? { "X-Impersonation-Session": "1" } : {}),
       },
       body: JSON.stringify({ wheretogo: newStage }),
     });
@@ -46,7 +32,7 @@ export async function updateUserStage(newStage: string): Promise<string | null> 
     
     // Save the new token
     if (data.token) {
-      setToken(data.token);
+      persistAuthToken(data.token, data.wheretogo);
       return data.token;
     }
     

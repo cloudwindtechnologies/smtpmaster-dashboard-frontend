@@ -463,9 +463,8 @@ function MonthlyOverviewCard({
 function Gauge({ value, leftValue }: { value: number; leftValue: number }) {
   const total = Math.max(value + leftValue, 1);
 
-  // keep a small visible beige part like the reference
-  const rawUsedPercent = (leftValue / total) * 100;
-  const usedPercent = Math.max(4.2, Math.min(rawUsedPercent, 8));
+  // ✅ REAL calculation (NO LIMIT)
+  const usedPercent = (leftValue / total) * 100;
   const remainingPercent = 100 - usedPercent;
 
   const width = 360;
@@ -477,30 +476,24 @@ function Gauge({ value, leftValue }: { value: number; leftValue: number }) {
 
   const arcPath = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
 
-  // point where beige ends and gradient begins
   const joinAngle = Math.PI - (usedPercent / 100) * Math.PI;
   const joinX = cx + r * Math.cos(joinAngle);
   const joinY = cy - r * Math.sin(joinAngle);
 
-  // left label / dot / line positions
   const dotX = 86;
   const dotY = 112;
 
-  const textX = dotX-65;
-  const textY = dotY+30;
+  const textX = dotX - 65;
+  const textY = dotY + 30;
 
-  const lineStartX = dotX -25;
-  const lineStartY = dotY+24;
+  const lineStartX = dotX - 25;
+  const lineStartY = dotY + 24;
   const lineEndX = joinX - 27;
-  const lineEndY = joinY +10;
+  const lineEndY = joinY + 10;
 
   return (
-    <div className="relative h-[165px] w-[360px]">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="absolute inset-0 h-full w-full"
-        preserveAspectRatio="xMidYMid meet"
-      >
+    <div className="relative h-[165px] w-[800px]">
+      <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full">
         <defs>
           <linearGradient id="gaugeGradientExact" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#ff6600" />
@@ -508,7 +501,7 @@ function Gauge({ value, leftValue }: { value: number; leftValue: number }) {
           </linearGradient>
         </defs>
 
-        {/* beige start segment */}
+        {/* ✅ ASH = USED */}
         <path
           d={arcPath}
           pathLength={100}
@@ -519,7 +512,7 @@ function Gauge({ value, leftValue }: { value: number; leftValue: number }) {
           strokeDasharray={`${usedPercent} ${100 - usedPercent}`}
         />
 
-        {/* gradient starts after beige */}
+        {/* ✅ SAFFRON = REMAINING */}
         <path
           d={arcPath}
           pathLength={100}
@@ -533,61 +526,32 @@ function Gauge({ value, leftValue }: { value: number; leftValue: number }) {
 
         {/* connector line */}
         <line
-          x1={lineStartX}
-          y1={lineStartY}
-          x2={lineEndX}
-          y2={lineEndY}
+          x1={57}
+          y1={136}
+          x2={29}
+          y2={136}
           stroke="#c9b89d"
           strokeWidth="2.5"
           strokeLinecap="round"
         />
 
-        {/* left value */}
-        <text
-          x={textX}
-          y={textY}
-          textAnchor="end"
-          fontSize="18"
-          fill="#9f927d"
-          fontWeight="600"
-        >
+        {/* used value */}
+        <text x={textX} y={textY} textAnchor="end" fontSize="18" fill="#9f927d" fontWeight="600">
           {formatNumber(leftValue)}
         </text>
 
-        {/* beige dot */}
-        <circle cx={dotX-52} cy={dotY+24} r="8" fill="#c9b89d" />
+        <circle cx={dotX - 52} cy={dotY + 24} r="8" fill="#c9b89d" />
 
         {/* center text */}
-        <text
-          x={190}
-          y="78"
-          textAnchor="middle"
-          fontSize="18"
-          fill="var(--text-strong)"
-          fontWeight="500"
-        >
+        <text x={190} y="78" textAnchor="middle" fontSize="18">
           Remaining
         </text>
 
-        <text
-          x={190}
-          y="116"
-          textAnchor="middle"
-          fontSize="38"
-          fill="#22c55e"
-          fontWeight="700"
-        >
+        <text x={190} y="116" textAnchor="middle" fontSize="38" fill="#22c55e" fontWeight="700">
           {formatNumber(value)}
         </text>
 
-        <text
-          x={190}
-          y="145"
-          textAnchor="middle"
-          fontSize="17"
-          fill="var(--text-strong)"
-          fontWeight="500"
-        >
+        <text x={190} y="145" textAnchor="middle" fontSize="17">
           Emails
         </text>
       </svg>
@@ -683,7 +647,7 @@ if (loading) {
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-end w-[520px]">
           <Gauge value={remaining} leftValue={sent} />
         </div>
       </div>

@@ -6,7 +6,6 @@ import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { normalizeRole, setTabSession } from "@/lib/auth";
-import toast from "react-hot-toast";
 import Image from "next/image";
 
 // Helper functions for pending redirect - MOVE THESE OUTSIDE THE COMPONENT
@@ -14,6 +13,7 @@ function setPendingRedirect(path: string | null) {
   if (typeof window === "undefined") return;
   if (!path) return;
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return;
+  if (path.includes("\n") || path.includes("\r")) return;
   if (path === "/login" || path.startsWith("/login?")) return;
   if (path === "/signup" || path.startsWith("/signup")) return;
 
@@ -145,7 +145,17 @@ export default function SignupPage() {
 
       const normalizedRole = normalizeRole(data.role) || "user";
 
-      localStorage.setItem("gmail", formData.email.toLowerCase());
+      localStorage.removeItem("superadmin_token");
+      localStorage.removeItem("superadmin_role");
+      localStorage.removeItem("admin_token_backup");
+      localStorage.removeItem("is_impersonating");
+      localStorage.removeItem("impersonated_user_id");
+      localStorage.removeItem("imp_user_id");
+      sessionStorage.removeItem("impersonate_token");
+      sessionStorage.removeItem("is_impersonated");
+      sessionStorage.removeItem("impersonated_user_id");
+
+      localStorage.removeItem("gmail");
       localStorage.setItem("token", data.token);
       localStorage.setItem("user_token", data.token);
       localStorage.setItem("role", normalizedRole);

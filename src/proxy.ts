@@ -10,6 +10,17 @@ type OnboardingStep =
   | "statp7"
   | "dashboard";
 
+type AuthPayload = {
+  data?: {
+    login_user_role_id?: string | number;
+    wheretogo?: string;
+  };
+  login_user_role_id?: string | number;
+  role?: string | number;
+  role_id?: string | number;
+  wheretogo?: string;
+};
+
 const STEP_SEQUENCE: OnboardingStep[] = [
   "statp2",
   "statp3",
@@ -27,8 +38,9 @@ const STEP_TO_ROUTE: Record<OnboardingStep, string> = {
   statp7: "/signup/step-7",
   dashboard: "/",
 };
+const ONBOARDING_STEPS = new Set<OnboardingStep>(STEP_SEQUENCE);
 
-const PUBLIC_ROUTES = ["/login", "/signup", "/forgot_password", "/forgot-password", "/unauthorized"];
+const PUBLIC_ROUTES = ["/login", "/logout", "/signup", "/forgot_password", "/forgot-password", "/unauthorized"];
 const PUBLIC_PREFIXES = [
   "/_next",
   "/images",
@@ -44,6 +56,7 @@ const ADMIN_ROUTE_PREFIXES = [
   "/email-package-config",
   "/user-management",
 ];
+const ADMIN_ROLE_IDS = new Set([1]);
 
 function isPublicRoute(pathname: string) {
   if (PUBLIC_ROUTES.includes(pathname)) return true;
@@ -53,7 +66,7 @@ function isPublicRoute(pathname: string) {
   return PUBLIC_PREFIXES.some((route) => pathname.startsWith(route));
 }
 
-async function verifyJWT(token: string): Promise<any | null> {
+async function verifyJWT(token: string): Promise<AuthPayload | null> {
   try {
     const secretValue = process.env.JWT_SECRET_KEY;
 
@@ -64,9 +77,10 @@ async function verifyJWT(token: string): Promise<any | null> {
 
     const secret = new TextEncoder().encode(secretValue);
     const { payload } = await jwtVerify(token, secret);
-    return payload;
-  } catch (error: any) {
-    console.error("[Middleware] JWT verify failed:", error.message);
+    return payload as AuthPayload;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Middleware] JWT verify failed:", message);
     return null;
   }
 }
@@ -79,6 +93,46 @@ function isAdminRoute(pathname: string) {
   return ADMIN_ROUTE_PREFIXES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
+}
+
+function canAccessAdminRoutes(roleId: number) {
+  return ADMIN_ROLE_IDS.has(roleId);
+}
+
+function getRoleId(decoded: AuthPayload): number {
+  const role =
+    decoded.data?.login_user_role_id ??
+    decoded.login_user_role_id ??
+    decoded.role_id ??
+    decoded.role;
+
+  if (role === "superadmin" || role === "admin") {
+    return 1;
+  }
+
+  if (role === null || role === undefined) {
+    return 0;
+  }
+
+  // Parse numeric roles safely
+  const parsed = Number.parseInt(String(role), 10);
+  if (!Number.isFinite(parsed)) {
+    console.warn(`Invalid role value received in JWT: ${role}, defaulting to 0`);
+    return 0;
+  }
+
+  return parsed;
+}
+
+function getOnboardingStep(decoded: AuthPayload): OnboardingStep {
+  const step = decoded.data?.wheretogo || decoded.wheretogo;
+
+  // Validate step against allowed onboarding steps
+  if (step && ONBOARDING_STEPS.has(step as OnboardingStep)) {
+    return step as OnboardingStep;
+  }
+
+  return "statp2";
 }
 
 export async function proxy(request: NextRequest) {
@@ -110,13 +164,13 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const roleId = Number(decoded?.data?.login_user_role_id);
-  const wheretogo = (decoded?.data?.wheretogo as OnboardingStep) || "statp2";
+  const roleId = getRoleId(decoded);
+  const wheretogo = getOnboardingStep(decoded);
   const adminRoute = isAdminRoute(pathname);
   const authEntryRoute = isAuthEntryRoute(pathname);
 
-  if (roleId === 1) {
-    if (authEntryRoute || pathname.startsWith("/signup")) {
+  if (canAccessAdminRoutes(roleId)) {
+    if (authEntryRoute) {
       return NextResponse.redirect(new URL("/", request.url));
     }
 

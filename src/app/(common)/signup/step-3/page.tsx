@@ -5,6 +5,10 @@ import Image from "next/image";
 import { Globe, Loader2, User } from "lucide-react";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { token as getToken } from "@/components/app_component/common/http";
+import {
+  getRouteFromWhereToGo,
+  refreshOnboardingStage,
+} from "@/lib/onboarding";
 
 type FormState = {
   first_name: string;
@@ -30,47 +34,6 @@ function getPendingRedirect() {
   return sessionStorage.getItem("pending_redirect");
 }
 
-function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
-  const routes: Record<string, string> = {
-    statp2: "/signup/step-2",
-    statp3: "/signup/step-3",
-    statp4: "/signup/step-4",
-    statp5: "/signup/step-5",
-    statp7: "/signup/step-7",
-    dashboard: "/",
-  };
-
-  return routes[wheretogo || ""] || "/";
-}
-
-// Function to update user stage - calls backend to calculate and get fresh JWT
-async function updateUserStage() {
-  try {
-    const response = await fetch("/api/auth/update-stage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-
-      if (data.token) {
-        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        localStorage.setItem("token", data.token);
-        return data.wheretogo;
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Failed to update stage:", error);
-    return null;
-  }
-}
-
 function getSafeRedirectFromUrl() {
   if (typeof window === "undefined") return null;
 
@@ -81,6 +44,7 @@ function getSafeRedirectFromUrl() {
   if (!redirect.startsWith("/")) return null;
   if (redirect.startsWith("//")) return null;
   if (redirect.includes("://")) return null;
+  if (redirect.includes("\n") || redirect.includes("\r")) return null;
   if (redirect === "/") return null;
   if (redirect.includes("_rsc")) return null;
   if (redirect === "/login" || redirect.startsWith("/login?")) return null;
@@ -147,11 +111,17 @@ export default function ProfileSetupPage() {
     setLoading(true);
 
     try {
+      const authToken = getToken();
+
+      if (!authToken) {
+        throw new Error("Session expired. Please login again.");
+      }
+
       const res = await fetch("/api/auth/register/update-profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(form),
       });
@@ -165,7 +135,7 @@ export default function ProfileSetupPage() {
       showToast("success", data?.message || "Profile updated successfully!");
 
       // Call updateStage to get fresh JWT with calculated wheretogo
-      const wheretogo = await updateUserStage();
+      const wheretogo = await refreshOnboardingStage();
 
       const nextRoute = getRouteFromWhereToGo(wheretogo);
       const pendingRedirect = getPendingRedirect();

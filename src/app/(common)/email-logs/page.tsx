@@ -6,11 +6,11 @@ import SuperAdminSidebar from "@/components/app_component/common/super-admin-sid
 import SuperAdminEmailLogsPage from "@/components/app_component/super-admin/email-logs/SuperAdminEmailLogs";
 import EmailLogs from "@/components/app_component/user/email-logs/email-logs";
 import { useUser } from "@/app/context/UserContext";
-import { isSuperadminRole } from "@/lib/auth";
+import { canAccessAdminShell } from "@/lib/auth";
 
 export default function EmailLogsPage() {
   const { user } = useUser();
-  const isAdmin = isSuperadminRole(user?.login_user_role_id);
+  const isAdmin = canAccessAdminShell(user?.login_user_role_id);
 
   return (
     <div className="bg-gray-100 lg:flex h-screen">

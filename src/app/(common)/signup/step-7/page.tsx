@@ -9,6 +9,11 @@ import {
 } from "firebase/auth";
 import Image from "next/image";
 import { token as getToken } from "@/components/app_component/common/http";
+import {
+  getRouteFromWhereToGo,
+  persistAuthToken,
+  refreshOnboardingStage,
+} from "@/lib/onboarding";
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
@@ -58,48 +63,6 @@ function getCookie(name: string): string | null {
 
 function deleteCookie(name: string) {
   document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
-}
-
-function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
-  const routes: Record<string, string> = {
-    statp2: "/signup/step-2",
-    statp3: "/signup/step-3",
-    statp4: "/signup/step-4",
-    statp5: "/signup/step-5",
-    statp7: "/signup/step-7",
-    dashboard: "/",
-  };
-
-  return routes[wheretogo || ""] || "/";
-}
-
-// Function to update user stage - calls backend to calculate and get fresh JWT
-async function updateUserStage() {
-  try {
-    const response = await fetch("/api/auth/update-stage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-
-      if (data.token) {
-        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user_token", data.token);
-        return data.wheretogo;
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Failed to update stage:", error);
-    return null;
-  }
 }
 
 export default function PhoneVerifyPage() {
@@ -212,9 +175,9 @@ function getCountryLabel(item: CountryItem) {
       setConfirmationResult(result);
       setStep("otp");
       setMessage("✅ OTP sent successfully");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Send OTP error:", error);
-      setMessage(`❌ ${error?.message || "Failed to send OTP"}`);
+      setMessage(`❌ ${error instanceof Error ? error.message : "Failed to send OTP"}`);
     } finally {
       setLoading(false);
     }
@@ -239,8 +202,11 @@ function getCountryLabel(item: CountryItem) {
       const result = await confirmationResult.confirm(otp);
       const firebaseToken = await result.user.getIdToken();
 
-      const appAuthToken =
-        localStorage.getItem("token") || getCookie("token") || "";
+      const appAuthToken = getToken();
+
+      if (!appAuthToken) {
+        throw new Error("Session expired. Please login again.");
+      }
 
       const response = await fetch("/api/auth/register/verify-phone", {
         method: "POST",
@@ -267,12 +233,11 @@ function getCountryLabel(item: CountryItem) {
 
       // Update token if backend returned new one
       if (data?.token) {
-        localStorage.setItem("token", data.token);
-        setCookie("token", data.token);
+        persistAuthToken(data.token);
       }
 
       // IMPORTANT: Call updateStage to get fresh JWT with "dashboard"
-      const wheretogo = await updateUserStage();
+      const wheretogo = await refreshOnboardingStage();
 
       // Get the original URL user wanted to visit
       const pendingRedirect = sanitizeInternalRedirect(getCookie("pending_redirect"));
@@ -287,9 +252,9 @@ function getCountryLabel(item: CountryItem) {
           window.location.href = nextRoute;
         }
       }, 1200);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Verify error:", error);
-      setMessage(`❌ ${error?.message || "Invalid OTP"}`);
+      setMessage(`❌ ${error instanceof Error ? error.message : "Invalid OTP"}`);
     } finally {
       setLoading(false);
     }

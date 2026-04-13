@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useState, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import {
   MapPin,
@@ -11,10 +11,13 @@ import {
   Globe,
   ChevronDown,
   Search,
-  ArrowLeft,
 } from "lucide-react";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { token as getToken } from "@/components/app_component/common/http";
+import {
+  getRouteFromWhereToGo,
+  refreshOnboardingStage,
+} from "@/lib/onboarding";
 
 type Country = {
   id?: number | string;
@@ -35,6 +38,8 @@ function setPendingRedirect(path: string | null) {
   if (typeof window === "undefined") return;
   if (!path) return;
   if (!path.startsWith("/") || path.includes("://")) return;
+  if (path.startsWith("//")) return;
+  if (path.includes("\n") || path.includes("\r")) return;
   if (path.startsWith("/login") || path.startsWith("/signup")) return;
   sessionStorage.setItem("pending_redirect", path);
 }
@@ -42,47 +47,6 @@ function setPendingRedirect(path: string | null) {
 function getPendingRedirect() {
   if (typeof window === "undefined") return null;
   return sessionStorage.getItem("pending_redirect");
-}
-
-function getRouteFromWhereToGo(wheretogo: string | null | undefined) {
-  const routes: Record<string, string> = {
-    statp2: "/signup/step-2",
-    statp3: "/signup/step-3",
-    statp4: "/signup/step-4",
-    statp5: "/signup/step-5",
-    statp7: "/signup/step-7",
-    dashboard: "/",
-  };
-
-  return routes[wheretogo || ""] || "/";
-}
-
-// Function to update user stage - calls backend to calculate and get fresh JWT
-async function updateUserStage() {
-  try {
-    const response = await fetch("/api/auth/update-stage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-
-      if (data.token) {
-        document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        localStorage.setItem("token", data.token);
-        return data.wheretogo;
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Failed to update stage:", error);
-    return null;
-  }
 }
 
 export default function AddressStepPage() {
@@ -94,7 +58,6 @@ export default function AddressStepPage() {
 }
 
 function AddressStepInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [form, setForm] = useState<AddressPayload>({
@@ -188,12 +151,17 @@ function AddressStepInner() {
 
     try {
       setLoading(true);
+      const authToken = getToken();
+
+      if (!authToken) {
+        throw new Error("Session expired. Please login again.");
+      }
 
       const res = await fetch("/api/auth/register/update-profile", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(form),
       });
@@ -205,7 +173,7 @@ function AddressStepInner() {
       showToast("success", "Address saved!");
 
       // Call updateStage to get fresh JWT with calculated wheretogo
-      const wheretogo = await updateUserStage();
+      const wheretogo = await refreshOnboardingStage();
 
       const nextRoute = getRouteFromWhereToGo(wheretogo);
       const pending = getPendingRedirect();
@@ -219,8 +187,8 @@ function AddressStepInner() {
           window.location.href = nextRoute;
         }
       }, 100);
-    } catch (e: any) {
-      showToast("error", e?.message || "Failed");
+    } catch (e: unknown) {
+      showToast("error", e instanceof Error ? e.message : "Failed");
     } finally {
       setLoading(false);
     }
