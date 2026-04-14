@@ -36,10 +36,10 @@ export async function POST(req: Request) {
       );
     }
     
-    if (!data?.success || !data?.token || !data?.role) {
+    if (!data?.token) {
       return NextResponse.json(
         { success: false, message: data?.error || "Invalid login response from backend" },
-        { status: 401 }
+        { status: 400 }
       );
     }
 
