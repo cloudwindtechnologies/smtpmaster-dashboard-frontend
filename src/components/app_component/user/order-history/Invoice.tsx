@@ -70,7 +70,6 @@ function formatDate(dateStr?: string) {
   });
 }
 
-
 function titleCase(text?: string | null) {
   if (!text) return "-";
   return text
@@ -93,6 +92,7 @@ function formatInvoiceMoney(value: number, currency: "INR" | "USD") {
 
   return `$${safeValue}`;
 }
+
 function numberToWords(num: number, currency: "INR" | "USD") {
   if (!Number.isFinite(num)) return "-";
 
@@ -201,6 +201,30 @@ function InvoiceSkeleton() {
   );
 }
 
+function sanitizeFileNamePart(value: string) {
+  return value
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "_")
+    .trim();
+}
+
+function makeDownloadFileName(invoiceId: string, invoiceNo?: string | null) {
+  const now = new Date();
+
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+
+  const safeInvoiceId = sanitizeFileNamePart(invoiceId || "unknown");
+  const safeInvoiceNo = sanitizeFileNamePart(invoiceNo || safeInvoiceId);
+
+  return `invoice_${safeInvoiceNo}_${safeInvoiceId}_${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}.pdf`;
+}
+
 export default function InvoicePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -209,6 +233,7 @@ export default function InvoicePage() {
   const [data, setData] = useState<InvoiceApiData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -284,15 +309,20 @@ export default function InvoicePage() {
   const isWestBengal = isIndia && ["westbengal", "wb"].includes(normalizedState);
   const displayCurrency: "INR" | "USD" = isIndia ? "INR" : "USD";
 
-const quantity = Math.max(1, Math.round(toNumber(invoice?.quantity || 1)));
-const totalAmount = roundMoney(toNumber(invoice?.amount));
-const tax = roundMoney(toNumber(invoice?.tax));
-const taxableAmount = roundMoney(Math.max(totalAmount - tax, 0));
-const unitPrice = quantity > 0 ? roundMoney(taxableAmount / quantity) : taxableAmount;
+  const quantity = Math.max(1, Math.round(toNumber(invoice?.quantity || 1)));
 
-const cgst = isWestBengal ? roundMoney(tax / 2) : 0;
-const sgst = isWestBengal ? roundMoney(tax / 2) : 0;
-const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
+  const totalAmount = roundMoney(toNumber(invoice?.amount));
+  const discount = roundMoney(toNumber(invoice?.discount));
+  const tax = roundMoney(toNumber(invoice?.tax));
+
+  const subtotalAfterDiscount = roundMoney(Math.max(totalAmount - tax, 0));
+  const planPrice = roundMoney(subtotalAfterDiscount + discount);
+
+  const unitPrice = quantity > 0 ? roundMoney(planPrice / quantity) : planPrice;
+
+  const cgst = isWestBengal ? roundMoney(tax / 2) : 0;
+  const sgst = isWestBengal ? roundMoney(tax / 2) : 0;
+  const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
 
   const invoiceNo = invoice?.invoice_id_new || invoice?.invoice_id || "-";
   const billToName = invoice?.user_or_company_name || invoice?.email || "-";
@@ -315,6 +345,56 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
   const showIGST = isIndia && !isWestBengal;
   const showCGSTSGST = isWestBengal;
 
+  const handelDwonload = async (invoiceId: string) => {
+    try {
+      if (!invoiceId) {
+        alert("Invoice ID not found");
+        return;
+      }
+
+      if (downloading) return;
+
+      setDownloading(true);
+
+      const res = await fetch(`/api/order_history/dwonload_invoice?id=${invoiceId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token()}`,
+          Accept: "application/pdf",
+        },
+        cache: "no-store",
+      });
+
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || "Download failed");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const fileName = makeDownloadFileName(invoiceId, invoiceNo);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e?.message || "Something went wrong");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 py-4 sm:py-8 px-2 sm:px-4 print:bg-white print:p-0">
       {loading && <InvoiceSkeleton />}
@@ -329,16 +409,14 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
 
       {!loading && !err && invoice && (
         <div className="max-w-4xl mx-auto bg-white shadow-lg print:shadow-none relative">
-          {/* Header Section */}
           <div className="relative w-full h-[120px] sm:h-[170px] font-bold flex overflow-hidden">
-            {/* LEFT WHITE (with angle cut) */}
             <div
               className="absolute left-0 top-0 mr-2 h-full sm:w-[60%] bg-white z-10"
               style={{
                 clipPath: "polygon(0 0, 100% 0, 85% 110%, 0% 100%)",
               }}
             >
-              <div className="h-full flex flex-col justify-center  px-3 sm:px-4">
+              <div className="h-full flex flex-col justify-center px-3 sm:px-4">
                 <div className="relative w-[250px] sm:w-[350px] md:w-[400px] h-[50px] sm:h-[70px] md:h-[80px]">
                   <Image
                     src="/CloudwindLogo.png"
@@ -348,39 +426,37 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
                     priority
                     unoptimized
                   />
-                 
                 </div>
-                 <p className="truncate">CLOUDWIND TECHNOLOGIES LLP</p>
-                 <p className="truncate">CERTIFIED BY STARTUP INDIA-DIPP68039, GOVT. OF INDIA</p>
+                <p className="truncate">CLOUDWIND TECHNOLOGIES LLP</p>
+                <p className="truncate">
+                  CERTIFIED BY STARTUP INDIA-DIPP68039, GOVT. OF INDIA
+                </p>
               </div>
             </div>
 
-            {/* RIGHT BLUE */}
             <div className="w-full h-full bg-blue-600 flex justify-end items-center sm:px-6 text-white text-right">
               <div className="w-[55%] sm:w-[45%] text-white py-2 sm:py-4 text-right text-[10px] sm:text-xs space-y-0.5 sm:space-y-1 leading-4 sm:leading-5">
-                <p className="truncate text-[1.01rem] ">{company.phone}</p>
+                <p className="truncate text-[1.01rem]">{company.phone}</p>
                 <p className="truncate text-[1.01rem] hidden xs:block">{company.llp}</p>
                 <p className="truncate text-[1.01rem]">{company.website}</p>
                 <p className="truncate text-[1.01rem]">{company.email}</p>
-                <p className="mt-1  text-[1.01rem]  ">
-                  "OFFICE:- 5, Shahid Khudiram Bose Sarani,<br /> Opposite Ajanta Apartment Ichapur, <br /> Howrah, West Bengal, India, 711104",
+                <p className="mt-1 text-[1.01rem]">
+                  "OFFICE:- 5, Shahid Khudiram Bose Sarani,<br /> Opposite Ajanta
+                  Apartment Ichapur, <br /> Howrah, West Bengal, India, 711104",
                 </p>
                 <p className="truncate text-[1.01rem] mb-1">{company.gstin}</p>
               </div>
             </div>
           </div>
 
-          {/* Bottom strip */}
           <div className="h-6 sm:h-8 bg-blue-900"></div>
 
-          {/* Title */}
           <div className="text-center py-4 sm:py-6">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-800 px-4">
               {planName}
             </h2>
           </div>
 
-          {/* Bill To and Invoice Details */}
           <div className="px-4 sm:px-8 py-3 sm:py-4">
             <div className="flex flex-col sm:flex-row justify-between gap-4 sm:gap-8">
               <div className="w-full sm:w-1/2 space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
@@ -390,7 +466,9 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
                 </div>
                 <div className="flex">
                   <span className="font-bold w-20 sm:w-24 flex-shrink-0">Address:</span>
-                  <span className="whitespace-pre-line break-words">{addressText || "-"}</span>
+                  <span className="whitespace-pre-line break-words">
+                    {addressText || "-"}
+                  </span>
                 </div>
                 <div className="flex">
                   <span className="font-bold w-20 sm:w-24 flex-shrink-0">Zip Code:</span>
@@ -416,7 +494,9 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
                   <span className="sm:w-48 truncate">{invoiceNo}</span>
                 </div>
                 <div className="flex justify-start sm:justify-end">
-                  <span className="font-bold w-24 sm:w-32 flex-shrink-0">Invoice Date:</span>
+                  <span className="font-bold w-24 sm:w-32 flex-shrink-0">
+                    Invoice Date:
+                  </span>
                   <span className="sm:w-48">{formatDate(invoice.created_on)}</span>
                 </div>
                 <div className="flex justify-start sm:justify-end">
@@ -427,7 +507,6 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
             </div>
           </div>
 
-          {/* Table */}
           <div className="px-2 sm:px-8 py-3 sm:py-4 relative overflow-x-auto">
             <table className="w-full border-collapse border border-gray-800 min-w-[600px]">
               <thead>
@@ -452,7 +531,9 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
 
               <tbody>
                 <tr>
-                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm">1</td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm">
+                    1
+                  </td>
                   <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm uppercase">
                     {planName}
                   </td>
@@ -463,26 +544,47 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
                     {formatInvoiceMoney(unitPrice, displayCurrency)}
                   </td>
                   <td className="border border-gray-800 px-2 sm:px-4 py-2 text-xs sm:text-sm text-right">
-                    {formatInvoiceMoney(taxableAmount, displayCurrency)}
+                    {formatInvoiceMoney(planPrice, displayCurrency)}
+                  </td>
+                </tr>
+
+                <tr>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
+                    <span className="float-right text-xs sm:text-sm">Discount</span>
+                  </td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
+                    - {formatInvoiceMoney(discount, displayCurrency)}
                   </td>
                 </tr>
 
                 {[...Array(4)].map((_, i) => (
                   <tr key={`empty-${i}`}>
-                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
-                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
-                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
-                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
-                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">&nbsp;</td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">
+                      &nbsp;
+                    </td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">
+                      &nbsp;
+                    </td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">
+                      &nbsp;
+                    </td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">
+                      &nbsp;
+                    </td>
+                    <td className="border border-gray-800 px-2 sm:px-4 py-3 sm:py-5">
+                      &nbsp;
+                    </td>
                   </tr>
                 ))}
 
                 <tr>
                   <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
-                    <span className="float-right font-semibold text-xs sm:text-sm">Taxable Value</span>
+                    <span className="float-right font-semibold text-xs sm:text-sm">
+                      Taxable Value
+                    </span>
                   </td>
                   <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
-                    {formatInvoiceMoney(taxableAmount, displayCurrency)}
+                    {formatInvoiceMoney(subtotalAfterDiscount, displayCurrency)}
                   </td>
                 </tr>
 
@@ -530,20 +632,17 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
               </tbody>
             </table>
 
-            {/* PAID Stamp */}
             <div className="pointer-events-none absolute left-[20%] sm:left-[24%] top-[40%] sm:top-[52%] -translate-x-1/2 -translate-y-1/2 rotate-[-15deg] border-2 sm:border-4 border-red-600 px-3 sm:px-6 py-1 sm:py-2 text-xl sm:text-3xl font-bold text-red-600 opacity-75 print:opacity-100 whitespace-nowrap">
               PAID
             </div>
           </div>
 
-          {/* Total in Words */}
           <div className="px-4 sm:px-8 py-3 sm:py-4">
             <p className="text-xs sm:text-sm">
               <span className="font-bold">Total In Words:</span> {totalInWords}
             </p>
           </div>
 
-          {/* Footer */}
           <div className="px-4 sm:px-8 py-4 sm:py-6 border-t border-gray-300 mt-4 sm:mt-8">
             <p className="text-[10px] sm:text-xs mb-3 sm:mb-4">
               <span className="font-bold">T&C:</span>{" "}
@@ -576,13 +675,20 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
             </div>
           </div>
 
-          {/* Print Button */}
           <div className="px-4 sm:px-8 py-4 text-center sm:text-right no-print">
             <button
-              onClick={() => window.print()}
-              className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded hover:bg-blue-700 transition-colors text-sm sm:text-base w-full sm:w-auto"
+              onClick={() => handelDwonload(id)}
+              disabled={downloading}
+              className={`px-4 sm:px-6 py-2 rounded transition-colors text-sm sm:text-base w-full sm:w-auto inline-flex items-center justify-center gap-2 ${
+                downloading
+                  ? "bg-gray-400 text-white cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
             >
-              Print Invoice
+              {downloading && (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              )}
+              {downloading ? "Downloading..." : "Download Invoice"}
             </button>
           </div>
         </div>
@@ -599,7 +705,7 @@ const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
             -webkit-print-color-adjust: exact;
           }
         }
-        
+
         @media (min-width: 475px) {
           .xs\\:block {
             display: block;

@@ -729,7 +729,7 @@ const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
         return;
       }
 
-      const res = await fetch("/api/all-packages/payment/applyCouponCode", {
+      const res = await fetch("/api/all-packages/applyCouponCode", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -740,10 +740,7 @@ const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
       });
 
       const json = (await res.json().catch(() => ({}))) as ApplyCouponResponse;
-      if (!res.ok) {
-        const msg = json?.message || firstValidationMsg(json) || "Coupon code is not valid or expired";
-        throw new Error(msg);
-      }
+      
       if (json?.code !== 200 || !json?.data) throw new Error(json?.message || "Coupon code is not valid or expired");
 
       setDiscountData(json.data);
@@ -964,7 +961,7 @@ const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
     const payload: Record<string, any> = {
       razorpay_payment_id: razorpayPaymentId,
       plan_id: pkg.id,
-      discountAmount: roundMoney(discountAmount),
+      discount: roundMoney(discountAmount),
       tax: roundMoney(tax),
       amount: roundMoney(total),
     };
@@ -1038,13 +1035,15 @@ const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
 
           const subscribeRes = await callSubscribeApi(razorpayPaymentId);
 
+         const invoiceId = subscribeRes?.data?.invoice_id || "";
+
           showToast(
             "success",
             subscribeRes?.message || "Payment successful and subscription activated."
           );
 
           setTimeout(() => {
-            router.push("/payment_success");
+            router.push(`/payment_success?invoice_id=${encodeURIComponent(invoiceId)}`);
           }, 1200);
         } catch (e: any) {
           showToast("error", e?.message || "Payment succeeded but subscription failed.");

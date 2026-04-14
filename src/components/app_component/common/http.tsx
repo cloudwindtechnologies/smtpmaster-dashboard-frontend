@@ -5,7 +5,7 @@ const envBackendUrl =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "https://bak.way2inboxs.com";
 
-export const apiURL = envBackendUrl;
+export const apiURL = 'http://localhost:8000';
 
 export const token = (): string | null => {
   return getAuthToken();
