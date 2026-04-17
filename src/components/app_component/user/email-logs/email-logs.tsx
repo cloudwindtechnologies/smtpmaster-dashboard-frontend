@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { token } from "../../common/http";
 
 type ApiLogRow = {
   bounceColumn: string;
@@ -39,19 +40,19 @@ type ApiResponse = {
 };
 
 function getAuthHeaders() {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+  const token1 = typeof window !== "undefined" ? token() : "";
   return {
     Accept: "application/json",
     "Content-Type": "application/json",
-    Authorization: `Bearer ${token ?? ""}`,
+    Authorization: `Bearer ${token1 ?? ""}`,
   };
 }
 
 function getDownloadHeaders() {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+  const token1 = typeof window !== "undefined" ? token() : "";
   return {
     Accept: "text/csv",
-    Authorization: `Bearer ${token ?? ""}`,
+    Authorization: `Bearer ${token1 ?? ""}`,
   };
 }
 

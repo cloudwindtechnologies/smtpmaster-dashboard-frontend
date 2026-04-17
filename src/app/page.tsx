@@ -72,10 +72,10 @@ export default function Home() {
       window.dispatchEvent(new Event("user-login"));
       cleanImpersonationUrl();
 
-      const onboardingRoute = getRouteFromWhereToGo(wheretogo);
-      if (onboardingRoute !== "/" && window.location.pathname !== onboardingRoute) {
-        window.location.replace(onboardingRoute);
-      }
+      // const onboardingRoute = getRouteFromWhereToGo(wheretogo);
+      // if (onboardingRoute !== "/" && window.location.pathname !== onboardingRoute) {
+      //   window.location.replace(onboardingRoute);
+      // }
 
       return true;
     };

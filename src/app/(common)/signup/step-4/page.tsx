@@ -194,6 +194,42 @@ function AddressStepInner() {
     }
   };
 
+  const handleResetSession = async () => {
+    const authToken = getToken();
+
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }).catch(() => {});
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user_token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("wheretogo");
+      localStorage.removeItem("userData");
+      localStorage.removeItem("filldata");
+      localStorage.removeItem("gmail");
+
+      sessionStorage.removeItem("tab_session");
+      sessionStorage.removeItem("auth_bootstrapping");
+      sessionStorage.removeItem("onboarding_filldata");
+      sessionStorage.removeItem("impersonate_token");
+
+      document.cookie = "token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+      document.cookie = "token=; Path=/; Max-Age=0; SameSite=Lax";
+      document.cookie = "role=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+      document.cookie = "role=; Path=/; Max-Age=0; SameSite=Lax";
+
+      window.location.replace("/login?error=session_expired");
+    }
+  };
+
   // const handlePrevious = () => {
   //   const pending = getPendingRedirect();
 
@@ -380,6 +416,17 @@ function AddressStepInner() {
                 </button>
               </div>
             </form>
+
+            <div className="mt-5 text-center text-sm text-gray-500">
+              Token expired?{" "}
+              <button
+                type="button"
+                onClick={handleResetSession}
+                className="font-semibold text-[#ff7800] hover:underline"
+              >
+                login again
+              </button>
+            </div>
           </div>
         </div>
 

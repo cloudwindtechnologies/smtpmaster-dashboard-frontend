@@ -286,57 +286,67 @@ function StatCard({
   };
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl bg-[var(--surface)] p-6 shadow-[var(--shadow-card)] transition-all duration-300">
+    <div className="group relative overflow-hidden rounded-2xl bg-[var(--surface)] p-5 shadow-[var(--shadow-card)] transition-all duration-300 hover:shadow-lg">
+      {/* Background gradient accent */}
+      <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-10 blur-2xl transition-opacity group-hover:opacity-20 ${
+        color === "blue" ? "bg-blue-500" :
+        color === "green" ? "bg-green-500" :
+        color === "red" ? "bg-red-500" :
+        color === "purple" ? "bg-purple-500" :
+        color === "orange" ? "bg-orange-500" :
+        color === "indigo" ? "bg-indigo-500" :
+        "bg-violet-500"
+      }`} />
+      
       <div className="absolute inset-0 rounded-2xl border border-[color:var(--line-soft)] transition-colors group-hover:border-[color:var(--line-strong)]" />
 
       <div className="relative">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="mb-2 text-sm font-medium text-[var(--text-soft)]">{title}</p>
-              {tooltip && !loading && (
-                <div className="group relative">
-                  <div className="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-[var(--surface-soft)] text-xs text-[var(--text-soft)]">
-                    ?
-                  </div>
-                  <div className="absolute bottom-full left-1/2 z-10 mb-2 hidden w-48 -translate-x-1/2 rounded bg-[var(--tooltip-bg)] p-2 text-xs text-[var(--tooltip-text)] shadow-lg group-hover:block">
-                    {tooltip}
-                  </div>
+        {/* Header with icon and title */}
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-[var(--text-soft)]">{title}</p>
+            {tooltip && !loading && (
+              <div className="group/tooltip relative">
+                <div className="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-[var(--surface-soft)] text-[10px] text-[var(--text-soft)]">
+                  ?
                 </div>
-              )}
+                <div className="absolute bottom-full left-1/2 z-10 mb-2 hidden w-48 -translate-x-1/2 rounded-lg bg-gray-900 p-2 text-xs text-white shadow-xl group-hover/tooltip:block">
+                  {tooltip}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {!loading && Icon && (
+            <div className={`rounded-lg p-2 ${iconColorClasses[color]}`}>
+              <Icon className="h-5 w-5" />
             </div>
-
-            {loading ? (
-              <>
-                <div className="h-9 w-24 rounded-xl bg-[var(--surface-soft)] animate-pulse" />
-                <div className="mt-3 h-4 w-32 rounded bg-[var(--surface-soft)] animate-pulse" />
-              </>
-            ) : (
-              <>
-                <p className="break-words text-3xl font-bold text-[var(--text-strong)]">
-                  {value}
-                </p>
-                {subtitle && (
-                  <p className="mt-2 text-sm text-[var(--text-soft)] sm:whitespace-nowrap">
-                    {subtitle}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="shrink-0">
-            {loading ? (
-              <div className="h-12 w-12 rounded-xl bg-[var(--surface-soft)] animate-pulse" />
-            ) : (
-              Icon && (
-                <div className={`rounded-xl p-3 transition-transform duration-300 ${iconColorClasses[color]}`}>
-                  <Icon className="h-6 w-6" />
-                </div>
-              )
-            )}
-          </div>
+          )}
         </div>
+
+        {/* Value section */}
+        {loading ? (
+          <div className="space-y-2">
+            <div className="h-8 w-28 rounded-lg bg-[var(--surface-soft)] animate-pulse" />
+            {subtitle && <div className="h-4 w-20 rounded bg-[var(--surface-soft)] animate-pulse" />}
+          </div>
+        ) : (
+          <>
+            <div className="mb-1 w-full overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' } as React.CSSProperties}>
+              <p 
+                className="text-2xl font-bold tracking-tight text-[var(--text-strong)] whitespace-nowrap"
+                title={value.toString()}
+              >
+                {value}
+              </p>
+            </div>
+            {subtitle && (
+              <p className="text-xs text-[var(--text-soft)]">
+                {subtitle}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     if (!data?.token) {
       return NextResponse.json(
         { success: false, message: data?.error || "Invalid login response from backend" },
-        { status: 400 }
+        { status: 401 }
       );
     }
 
