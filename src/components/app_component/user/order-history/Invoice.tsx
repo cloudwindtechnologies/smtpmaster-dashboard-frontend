@@ -295,7 +295,7 @@ export default function InvoicePage() {
     phone: "+91 7439680211",
     llp: "LLP Identification Number: AAT-7224",
     website: "www.cloudwind.in",
-    email: "info@cloudwind.in",
+    email: "www.cloudwind.in",
     office:
       "OFFICE:- 5, Shahid Khudiram Bose Sarani, Opposite Ajanta Apartment Ichapur, Howrah, West Bengal, India, 711104",
     gstin: "GST-IN- 19AAPFC6989D1ZS",
@@ -418,13 +418,10 @@ export default function InvoicePage() {
             >
               <div className="h-full flex flex-col justify-center px-3 sm:px-4">
                 <div className="relative w-[250px] sm:w-[350px] md:w-[400px] h-[50px] sm:h-[70px] md:h-[80px]">
-                  <Image
+                  <img
                     src="/CloudwindLogo.png"
                     alt="Cloudwind Logo"
-                    fill
                     className="object-contain object-left"
-                    priority
-                    unoptimized
                   />
                 </div>
                 <p className="truncate">CLOUDWIND TECHNOLOGIES LLP</p>
@@ -436,13 +433,13 @@ export default function InvoicePage() {
 
             <div className="w-full h-full bg-blue-600 flex justify-end items-center sm:px-6 text-white text-right">
               <div className="w-[55%] sm:w-[45%] text-white py-2 sm:py-4 text-right text-[10px] sm:text-xs space-y-0.5 sm:space-y-1 leading-4 sm:leading-5">
-                <p className="truncate text-[1.01rem]">{company.phone}</p>
-                <p className="truncate text-[1.01rem] hidden xs:block">{company.llp}</p>
-                <p className="truncate text-[1.01rem]">{company.website}</p>
-                <p className="truncate text-[1.01rem]">{company.email}</p>
+                <p className="truncate text-[1.01rem]">+91 7439680211</p>
+                <p className="truncate text-[1.01rem] hidden xs:block">LLP Identification Number: AAT-7224</p>
+                <p className="truncate text-[1.01rem]">www.cloudwind.in</p>
+                <p className="truncate text-[1.01rem]">info@cloudwind.in</p>
                 <p className="mt-1 text-[1.01rem]">
-                  "OFFICE:- 5, Shahid Khudiram Bose Sarani,<br /> Opposite Ajanta
-                  Apartment Ichapur, <br /> Howrah, West Bengal, India, 711104",
+                  OFFICE:- 5, Shahid Khudiram Bose Sarani,<br /> Opposite Ajanta
+                  Apartment Ichapur, <br /> Howrah, West Bengal, India, 711104,
                 </p>
                 <p className="truncate text-[1.01rem] mb-1">{company.gstin}</p>
               </div>

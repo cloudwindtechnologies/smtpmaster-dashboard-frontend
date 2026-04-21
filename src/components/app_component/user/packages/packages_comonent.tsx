@@ -15,7 +15,7 @@ import { token } from "../../common/http";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/app/context/UserContext";
 
-type PlanTab = "monthly" | "longterm";
+type PlanTab = "monthly" | "longterm" | "custom";
 
 type ApiPlan = {
   id: number;
@@ -30,6 +30,7 @@ type ApiPlan = {
   dedicated_ip?: boolean;
   free_sending_app?: boolean;
   free_sending_domain?: boolean;
+  is_custom?: boolean | number | string;
 };
 
 type PackageRow = {
@@ -42,6 +43,7 @@ type PackageRow = {
   rawValidDays: number;
   hideBuyBtn: boolean;
   isFree: boolean;
+  isCustom: boolean;
 };
 
 type CrsResponse = {
@@ -53,6 +55,10 @@ type CrsResponse = {
 function toNumber(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function toBoolean(v: any) {
+  return v === true || v === 1 || v === "1";
 }
 
 function mapApiPlanToRow(p: ApiPlan): PackageRow {
@@ -69,26 +75,34 @@ function mapApiPlanToRow(p: ApiPlan): PackageRow {
     rawValidDays: days,
     hideBuyBtn: p.hide_buy_btn === "1",
     isFree: price <= 0,
+    isCustom: toBoolean(p.is_custom),
   };
 }
 
 function splitPlans(plans: ApiPlan[]) {
   const monthly: PackageRow[] = [];
   const longterm: PackageRow[] = [];
+  const custom: PackageRow[] = [];
 
   for (const p of plans) {
     if (String(p.status) !== "1") continue;
 
     const row = mapApiPlanToRow(p);
 
-    if (row.rawValidDays > 30) longterm.push(row);
-    else monthly.push(row);
+    if (row.isCustom) {
+      custom.push(row);
+    } else if (row.rawValidDays > 30) {
+      longterm.push(row);
+    } else {
+      monthly.push(row);
+    }
   }
 
   monthly.sort((a, b) => a.price - b.price);
   longterm.sort((a, b) => a.price - b.price);
+  custom.sort((a, b) => a.price - b.price);
 
-  return { monthly, longterm };
+  return { monthly, longterm, custom };
 }
 
 async function safeJson(res: Response) {
@@ -108,6 +122,7 @@ export default function AllPakagesComponent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [monthlyPackages, setMonthlyPackages] = useState<PackageRow[]>([]);
   const [longTermPackages, setLongTermPackages] = useState<PackageRow[]>([]);
+  const [customPackages, setCustomPackages] = useState<PackageRow[]>([]);
   const [cartLoadingId, setCartLoadingId] = useState<number | null>(null);
   const [inrRate, setInrRate] = useState<number | null>(null);
   const [crsLoading, setCrsLoading] = useState(false);
@@ -199,10 +214,11 @@ export default function AllPakagesComponent() {
         throw new Error("Invalid API response format");
       }
 
-      const { monthly, longterm } = splitPlans(list);
+      const { monthly, longterm, custom } = splitPlans(list);
 
       setMonthlyPackages(monthly);
       setLongTermPackages(longterm);
+      setCustomPackages(custom);
 
       toast.success("Plans loaded", { position: "top-center" });
     } catch (e: any) {
@@ -210,6 +226,7 @@ export default function AllPakagesComponent() {
       setErrorMessage(e?.message ?? "Failed to load plans");
       setMonthlyPackages([]);
       setLongTermPackages([]);
+      setCustomPackages([]);
       toast.error(e?.message ?? "Failed to load plans");
     } finally {
       setIsLoading(false);
@@ -222,9 +239,21 @@ export default function AllPakagesComponent() {
     loadAllPlans();
   }, []);
 
+  useEffect(() => {
+    if (tab === "custom" && customPackages.length === 0) {
+      setTab("monthly");
+    }
+  }, [tab, customPackages]);
+
   const rows = useMemo(() => {
-    return tab === "monthly" ? monthlyPackages : longTermPackages;
-  }, [tab, monthlyPackages, longTermPackages]);
+    if (tab === "monthly") return monthlyPackages;
+    if (tab === "longterm") return longTermPackages;
+    return customPackages;
+  }, [tab, monthlyPackages, longTermPackages, customPackages]);
+
+  const hasCustomPlanTab = useMemo(() => {
+    return customPackages.length > 0;
+  }, [customPackages]);
 
   const displayPrice = (usd: number) => {
     if (usd <= 0) return { symbol: isIndia ? "₹" : "$", amount: 0 };
@@ -254,152 +283,148 @@ export default function AllPakagesComponent() {
     }
   };
 
-if (isLoading) {
-  return (
-    <div className="w-full max-w-7xl mx-auto">
-      <div
-        className="overflow-hidden bg-[var(--surface)] shadow-[var(--shadow-soft)] border border-[color:var(--line-soft)]"
-        style={{ borderRadius: "var(--page-radius)" }}
-      >
-        {/* Header */}
-        <div className="relative px-6 py-6 bg-gradient-to-r from-[var(--brand)] to-[var(--brand-strong)]">
-          <div className="absolute inset-0 opacity-20 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4xKSIvPjwvc3ZnPg==')]" />
-          <div className="relative z-10 animate-pulse">
-            <div className="h-7 w-52 rounded-md bg-white/25 mb-2" />
-            <div className="h-4 w-80 rounded-md bg-white/20" />
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="px-6 py-4 border-b border-[color:var(--line-soft)] bg-[var(--surface-2)]">
-          <div className="flex gap-2 p-1 rounded-xl w-fit bg-[var(--surface-soft)]">
-            <div className="h-10 w-32 rounded-lg bg-[var(--surface)] animate-pulse" />
-            <div className="h-10 w-36 rounded-lg bg-[var(--surface)] animate-pulse" />
-          </div>
-        </div>
-
-        {/* Desktop Table Skeleton */}
-        <div className="w-full overflow-x-auto hidden md:block">
-          <table className="min-w-[900px] w-full text-sm">
-            <thead>
-              <tr className="border-b bg-[var(--surface-2)] border-[color:var(--line-soft)]">
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-                  #
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-                  Package Name
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-                  Email Limit
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-                  Validity
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-                  Speed
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-                  Price
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-                  Action
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-[color:var(--line-soft)]">
-              {[...Array(6)].map((_, idx) => (
-                <tr
-                  key={idx}
-                  className={idx % 2 === 0 ? "bg-[var(--surface)]" : "bg-[var(--surface-2)]"}
-                >
-                  <td className="px-6 py-4">
-                    <div className="h-8 w-8 rounded-full bg-[var(--surface-soft)] animate-pulse" />
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="space-y-2 animate-pulse">
-                      <div className="h-5 w-40 rounded bg-[var(--surface-soft)]" />
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="h-7 w-24 rounded-full bg-[var(--info-soft)] animate-pulse" />
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 animate-pulse">
-                      <div className="h-4 w-4 rounded bg-[var(--surface-soft)]" />
-                      <div className="h-4 w-20 rounded bg-[var(--surface-soft)]" />
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 animate-pulse">
-                      <div className="h-4 w-4 rounded bg-[var(--surface-soft)]" />
-                      <div className="h-4 w-16 rounded bg-[var(--surface-soft)]" />
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="space-y-2 animate-pulse">
-                      <div className="h-5 w-16 rounded bg-[var(--surface-soft)]" />
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4">
-                    <div className="h-10 w-28 rounded-lg bg-[var(--brand)]/20 animate-pulse" />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Card Skeleton */}
-        <div className="block md:hidden p-4 space-y-4 bg-[var(--surface)]">
-          {[...Array(4)].map((_, idx) => (
-            <div
-              key={idx}
-              className="rounded-2xl border border-[color:var(--line-soft)] bg-[var(--surface-2)] p-4 space-y-4 animate-pulse"
-            >
-              <div className="flex items-center justify-between">
-                <div className="h-5 w-32 rounded bg-[var(--surface-soft)]" />
-                <div className="h-6 w-16 rounded-full bg-[var(--info-soft)]" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
-                  <div className="h-4 w-20 rounded bg-[var(--surface-soft)]" />
-                </div>
-                <div className="space-y-2">
-                  <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
-                  <div className="h-4 w-16 rounded bg-[var(--surface-soft)]" />
-                </div>
-                <div className="space-y-2">
-                  <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
-                  <div className="h-4 w-16 rounded bg-[var(--surface-soft)]" />
-                </div>
-                <div className="space-y-2">
-                  <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
-                  <div className="h-4 w-14 rounded bg-[var(--surface-soft)]" />
-                </div>
-              </div>
-
-              <div className="h-10 w-full rounded-xl bg-[var(--brand)]/20" />
+  if (isLoading) {
+    return (
+      <div className="w-full max-w-7xl mx-auto">
+        <div
+          className="overflow-hidden bg-[var(--surface)] shadow-[var(--shadow-soft)] border border-[color:var(--line-soft)]"
+          style={{ borderRadius: "var(--page-radius)" }}
+        >
+          <div className="relative px-6 py-6 bg-gradient-to-r from-[var(--brand)] to-[var(--brand-strong)]">
+            <div className="absolute inset-0 opacity-20 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4xKSIvPjwvc3ZnPg==')]" />
+            <div className="relative z-10 animate-pulse">
+              <div className="h-7 w-52 rounded-md bg-white/25 mb-2" />
+              <div className="h-4 w-80 rounded-md bg-white/20" />
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 bg-[var(--surface-2)] border-t border-[color:var(--line-soft)]">
-          <div className="h-4 w-36 rounded bg-[var(--surface-soft)] animate-pulse" />
+          <div className="px-6 py-4 border-b border-[color:var(--line-soft)] bg-[var(--surface-2)]">
+            <div className="flex gap-2 p-1 rounded-xl w-fit bg-[var(--surface-soft)]">
+              <div className="h-10 w-32 rounded-lg bg-[var(--surface)] animate-pulse" />
+              <div className="h-10 w-36 rounded-lg bg-[var(--surface)] animate-pulse" />
+              
+            </div>
+          </div>
+
+          <div className="w-full overflow-x-auto hidden md:block">
+            <table className="min-w-[900px] w-full text-sm">
+              <thead>
+                <tr className="border-b bg-[var(--surface-2)] border-[color:var(--line-soft)]">
+                  <th className="px-6 py-4 w-16 text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
+                    #
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
+                    Package Name
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
+                    Email Limit
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
+                    Validity
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
+                    Speed
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
+                    Price
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-[color:var(--line-soft)]">
+                {[...Array(6)].map((_, idx) => (
+                  <tr
+                    key={idx}
+                    className={idx % 2 === 0 ? "bg-[var(--surface)]" : "bg-[var(--surface-2)]"}
+                  >
+                    <td className="px-6 py-4">
+                      <div className="h-8 w-8 rounded-full bg-[var(--surface-soft)] animate-pulse" />
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="space-y-2 animate-pulse">
+                        <div className="h-5 w-40 rounded bg-[var(--surface-soft)]" />
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="h-7 w-24 rounded-full bg-[var(--info-soft)] animate-pulse" />
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 animate-pulse">
+                        <div className="h-4 w-4 rounded bg-[var(--surface-soft)]" />
+                        <div className="h-4 w-20 rounded bg-[var(--surface-soft)]" />
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 animate-pulse">
+                        <div className="h-4 w-4 rounded bg-[var(--surface-soft)]" />
+                        <div className="h-4 w-16 rounded bg-[var(--surface-soft)]" />
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="space-y-2 animate-pulse">
+                        <div className="h-5 w-16 rounded bg-[var(--surface-soft)]" />
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="h-10 w-28 rounded-lg bg-[var(--brand)]/20 animate-pulse" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="block md:hidden p-4 space-y-4 bg-[var(--surface)]">
+            {[...Array(4)].map((_, idx) => (
+              <div
+                key={idx}
+                className="rounded-2xl border border-[color:var(--line-soft)] bg-[var(--surface-2)] p-4 space-y-4 animate-pulse"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="h-5 w-32 rounded bg-[var(--surface-soft)]" />
+                  <div className="h-6 w-16 rounded-full bg-[var(--info-soft)]" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
+                    <div className="h-4 w-20 rounded bg-[var(--surface-soft)]" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
+                    <div className="h-4 w-16 rounded bg-[var(--surface-soft)]" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
+                    <div className="h-4 w-16 rounded bg-[var(--surface-soft)]" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-14 rounded bg-[var(--surface-soft)]" />
+                    <div className="h-4 w-14 rounded bg-[var(--surface-soft)]" />
+                  </div>
+                </div>
+
+                <div className="h-10 w-full rounded-xl bg-[var(--brand)]/20" />
+              </div>
+            ))}
+          </div>
+
+          <div className="px-6 py-4 bg-[var(--surface-2)] border-t border-[color:var(--line-soft)]">
+            <div className="h-4 w-36 rounded bg-[var(--surface-soft)] animate-pulse" />
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   if (errorMessage) {
     return (
@@ -420,14 +445,20 @@ if (isLoading) {
 
   return (
     <div className="w-full max-w-7xl mx-auto">
-      <div className=" overflow-hidden bg-[var(--surface)] shadow-[var(--shadow-soft)] border border-[color:var(--line-soft)]" style={{ borderRadius: "var(--page-radius)" }}>
-        <div className="bg-[var(--brand)] text-[var(--text-on-dark)]" style={{borderRadius: "var(--page-radius)"}}>
+      <div
+        className=" overflow-hidden bg-[var(--surface)] shadow-[var(--shadow-soft)] border border-[color:var(--line-soft)]"
+        style={{ borderRadius: "var(--page-radius)" }}
+      >
+        <div
+          className="bg-[var(--brand)] text-[var(--text-on-dark)]"
+          style={{ borderRadius: "var(--page-radius)" }}
+        >
           <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h1 className="text-xl font-bold tracking-tight">Choose Your Plan</h1>
                 <p className="mt-2 text-[var(--text-on-dark)]/80">
-                Select the perfect package for your email marketing needs
+                  Select the perfect package for your email marketing needs
                 </p>
               </div>
             </div>
@@ -469,6 +500,25 @@ if (isLoading) {
                 <span className="absolute inset-0 rounded-lg ring-2 ring-[var(--brand)]/20" />
               )}
             </button>
+
+            {hasCustomPlanTab && (
+              <button
+                type="button"
+                onClick={() => setTab("custom")}
+                className={[
+                  "relative px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 flex items-center gap-2",
+                  tab === "custom"
+                    ? "bg-[var(--surface)] text-[var(--brand-strong)] shadow-sm"
+                    : "text-[var(--text-soft)] hover:text-[var(--text-strong)]",
+                ].join(" ")}
+              >
+                <Package className="h-4 w-4" />
+                Custom Plan
+                {tab === "custom" && (
+                  <span className="absolute inset-0 rounded-lg ring-2 ring-[var(--brand)]/20" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -594,7 +644,11 @@ if (isLoading) {
                   <td className="px-6 py-16 text-center" colSpan={7}>
                     <div className="flex flex-col items-center gap-3 text-[var(--text-faint)]">
                       <Package className="h-12 w-12 opacity-20" />
-                      <p className="text-sm font-medium">No packages found in this category.</p>
+                      <p className="text-sm font-medium">
+                        {tab === "custom"
+                          ? "No custom packages found."
+                          : "No packages found in this category."}
+                      </p>
                     </div>
                   </td>
                 </tr>
