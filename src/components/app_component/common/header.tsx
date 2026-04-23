@@ -125,6 +125,23 @@ export default function Header() {
     sessionStorage.setItem(TAB_ALIVE_KEY, "1");
   }, []);
 
+  useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    if (
+      dropdownRef.current &&
+      !dropdownRef.current.contains(event.target as Node)
+    ) {
+      setDropdownOpen(false);
+    }
+  };
+
+  document.addEventListener("mousedown", handleClickOutside);
+
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, []);
+
   // ✅ Role + tabType detection (CLIENT-SIDE ONLY)
   useEffect(() => {
     checkTabType();
@@ -252,7 +269,7 @@ export default function Header() {
                   </Link>
 
                   <Link
-                    href="/settings"
+                    href="/email-config"
                     onClick={() => setDropdownOpen(false)}
                     className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg text-foreground hover:bg-muted transition-colors"
                   >

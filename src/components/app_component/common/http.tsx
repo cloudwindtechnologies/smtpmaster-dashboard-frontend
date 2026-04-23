@@ -1,11 +1,8 @@
 import { getToken as getAuthToken } from '@/lib/auth';
 
-const envBackendUrl =
-  process.env.BACKEND_URL ||
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "https://backend.way2smtp.com";
+const envBackendUrl = process.env.BACKEND_URL
 
-export const apiURL = 'https://backend.way2smtp.com';
+export const apiURL = 'https://bak.way2inboxs.com';
 
 export const token = (): string | null => {
   return getAuthToken();

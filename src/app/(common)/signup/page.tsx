@@ -292,8 +292,8 @@ export default function SignupPage() {
                         />
                       </div>
 
-                      <h1 className="text-center text-[26px] font-bold tracking-tight text-gray-900">Create Account</h1>
-                      <p className="mt-1 text-center text-[14px] text-gray-500">Join SMTPMaster and start sending emails</p>
+                      <h1 className="text-center text-[26px] font-bold tracking-tight mt-2 text-gray-900">Create Account</h1>
+                      <p className="mt-1 text-center text-[18px] text-gray-500">Join SMTPMaster and start sending emails</p>
                     </div>
 
                     <form onSubmit={onSignup} className="space-y-4">
@@ -338,7 +338,7 @@ export default function SignupPage() {
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
-                        <p className="mt-1 text-[10px] text-gray-500">8-20 characters</p>
+                        <p className="mt-1 text-[13px] text-gray-500">8-20 characters</p>
                       </div>
 
                       <div>
@@ -370,7 +370,7 @@ export default function SignupPage() {
                       <button
                         type="submit"
                         disabled={loading}
-                        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-70"
+                        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-lg font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-70"
                       >
                         {loading && <Loader2 className="h-5 w-5 animate-spin" />}
                         {loading ? "Creating account..." : "Create account"}
@@ -378,12 +378,12 @@ export default function SignupPage() {
                     </form>
 
                     <div className="mt-5">
-                      <p className="text-center text-sm text-gray-500">
+                      <p className="text-center text-[18px] text-gray-500">
                         Already registered? <Link href="/login" className="font-semibold text-[#ff7800] transition hover:text-[#e66c00]">Login Instead</Link>
                       </p>
                     </div>
 
-                    <div className="mt-7 text-center text-xs text-gray-400">© SMTPMaster. All rights reserved.</div>
+                    <div className="mt-7 text-center text-sm text-gray-400">© SMTPMaster. All rights reserved.</div>
                   </div>
                 </div>
               </div>

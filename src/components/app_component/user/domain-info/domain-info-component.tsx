@@ -688,9 +688,10 @@ export default function UserInfo() {
               <p className="mt-3 text-sm leading-6 text-[var(--text-soft)]">
                 Once added, your outgoing emails will be sent from this domain
                 <br />
-                <span className="font-medium text-[var(--text-body)]">
-                  (e.g., name@{pendingDomain} or sales@{pendingDomain})
-                </span>
+                <span>(e.g.,
+                <span className="font-medium text-[var(--brand)]">
+                  name@{pendingDomain} <span className="text-[var(--text-soft)]">or </span> sales@{pendingDomain}
+                </span>)</span>
               </p>
             </div>
 

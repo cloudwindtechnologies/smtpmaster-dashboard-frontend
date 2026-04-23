@@ -701,9 +701,12 @@ const paymentFee = roundMoney(
     ? subTotalAfterCoupon * CRYPTO_EXTRA_RATE
     : 0
 );
-const tax = roundMoney(
-  isIndia ? (subTotalAfterCoupon + paymentFee) * 0.18 : 0
-);
+const tax = 
+  isIndia ? (subTotalAfterCoupon + paymentFee) * 0.18 : 0;
+
+const decimal = Number((tax % 1).toFixed(2));
+const ispluse = decimal >= 0.5;
+
 const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
 
   const featureList = splitList(pkg?.features);
@@ -962,7 +965,7 @@ const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
       razorpay_payment_id: razorpayPaymentId,
       plan_id: pkg.id,
       discount: roundMoney(discountAmount),
-      tax: roundMoney(tax),
+      tax: tax,
       amount: roundMoney(total),
     };
 
@@ -1555,7 +1558,8 @@ const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
                         muted={paymentFee === 0}
                       />
                       <div className="my-2 border-t border-slate-100" />
-                      <Row label={isIndia ? "GST (18%)" : "Tax"} value={`${currencySymbol}${money(tax)}`} muted={!isIndia} />
+                      <Row label={isIndia ? "GST (18%)" : "Tax"} value={`${currencySymbol}${tax}`} muted={!isIndia} />
+                      <Row label="Round off" value={ispluse?`+${1-decimal}`:`-${decimal}`} muted={!isIndia} />
                       <Row label="Total" value={`${currencySymbol}${money(total)}`} strong />
                     </div>
 

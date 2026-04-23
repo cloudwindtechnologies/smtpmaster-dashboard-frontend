@@ -7,6 +7,8 @@ import Link from "next/link";
 import { normalizeRole, setSuperadminSession, setTabSession } from "@/lib/auth";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import Image from "next/image";
+import ReCAPTCHA from "react-google-recaptcha";
+import { useRef } from "react";
 
 type LoginResponse = {
   token?: string;
@@ -107,6 +109,9 @@ function LoginForm() {
   sessionStorage.setItem("pending_redirect", path);
 }
 
+const recaptchaRef = useRef<ReCAPTCHA | null>(null);
+const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
 function getPendingRedirect() {
   if (typeof window === "undefined") return null;
   return sessionStorage.getItem("pending_redirect");
@@ -133,8 +138,115 @@ function clearPendingRedirect() {
   }
 }, [redirectFromUrl]);
 
+// const onLogin = async (e: React.FormEvent) => {
+//   e.preventDefault();
+//   setLoading(true);
+
+//   try {
+//     const res = await fetch("/api/auth/login", {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({
+//         email,
+//         password,
+//         "g-recaptcha-response": 1,
+//         type: "login",
+//         client_user_agent: navigator.userAgent,
+//       }),
+//     });
+
+//     const data = (await res.json()) as LoginResponse;
+    
+//     if (!res.ok || !data?.success || !data?.token) {
+//       showToast("error", getLoginErrorMessage(data));
+//       return;
+//     } else {
+//       showToast("success", getFirstText(data.message) || "Login successful");
+//     }
+
+//     const role = normalizeRole(data.role) || "";
+
+//     sessionStorage.removeItem("impersonate_token");
+//     sessionStorage.removeItem("is_impersonated");
+//     sessionStorage.removeItem("impersonated_user_id");
+//     sessionStorage.removeItem("wheretogo");
+
+//     if (role !== "superadmin") {
+//       localStorage.removeItem("superadmin_token");
+//       localStorage.removeItem("superadmin_role");
+//       localStorage.removeItem("admin_token_backup");
+//       localStorage.removeItem("is_impersonating");
+//       localStorage.removeItem("impersonated_user_id");
+//       localStorage.removeItem("imp_user_id");
+//       localStorage.setItem("user_token", data.token);
+//       localStorage.setItem("token", data.token);
+//       localStorage.setItem("role", role);
+//       setTabSession("user");
+//     } else {
+//       localStorage.removeItem("user_token");
+//       localStorage.removeItem("is_impersonating");
+//       localStorage.removeItem("impersonated_user_id");
+//       localStorage.removeItem("imp_user_id");
+//       localStorage.setItem("superadmin_token", data.token);
+//       localStorage.setItem("token", data.token);
+//       setSuperadminSession(data.token, role);
+//     }
+
+//     if (data.wheretogo) {
+//       localStorage.setItem("wheretogo", data.wheretogo);
+//     }
+//     sessionStorage.setItem("auth_bootstrapping", "1");
+
+//     // ❌ REMOVE THIS LINE - Server sets HTTP-only cookie, not client!
+//     // document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+
+//     window.dispatchEvent(new Event("user-login"));
+
+//     if (redirectFromUrl) {
+//       setPendingRedirect(redirectFromUrl);
+//     }
+    
+//     const fallbackRedirect = getRedirectPathFromWhereToGo(data.wheretogo);
+//     const isUnfinished = fallbackRedirect.startsWith("/signup/");
+//     const pendingRedirect = getPendingRedirect();
+
+//     // unfinished user must finish steps first
+//     if (isUnfinished) {
+//       if (pendingRedirect) {
+//         window.location.replace(
+//           `${fallbackRedirect}?redirect=${encodeURIComponent(pendingRedirect)}`
+//         );
+//       } else {
+//         window.location.replace(fallbackRedirect);
+//       }
+//       return;
+//     }
+
+//     // finished user goes to pasted page if available
+//     if (pendingRedirect) {
+//       clearPendingRedirect();
+//       window.location.replace(pendingRedirect);
+//       return;
+//     }
+
+//     window.location.replace(fallbackRedirect);
+     
+//   } catch (error) {
+//     console.log(error);
+//     showToast('error', "Something went wrong. Please try again.");
+//   } finally {
+//     setLoading(false);
+//   }
+// };
+
 const onLogin = async (e: React.FormEvent) => {
   e.preventDefault();
+
+  if (!captchaToken) {
+    showToast("error", "Please complete reCAPTCHA");
+    return;
+  }
+
   setLoading(true);
 
   try {
@@ -144,16 +256,18 @@ const onLogin = async (e: React.FormEvent) => {
       body: JSON.stringify({
         email,
         password,
-        "g-recaptcha-response": 1,
+        "g-recaptcha-response": captchaToken,
         type: "login",
         client_user_agent: navigator.userAgent,
       }),
     });
 
     const data = (await res.json()) as LoginResponse;
-    
+
     if (!res.ok || !data?.success || !data?.token) {
       showToast("error", getLoginErrorMessage(data));
+      recaptchaRef.current?.reset();
+      setCaptchaToken(null);
       return;
     } else {
       showToast("success", getFirstText(data.message) || "Login successful");
@@ -192,20 +306,16 @@ const onLogin = async (e: React.FormEvent) => {
     }
     sessionStorage.setItem("auth_bootstrapping", "1");
 
-    // ❌ REMOVE THIS LINE - Server sets HTTP-only cookie, not client!
-    // document.cookie = `token=${encodeURIComponent(data.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-
     window.dispatchEvent(new Event("user-login"));
 
     if (redirectFromUrl) {
       setPendingRedirect(redirectFromUrl);
     }
-    
+
     const fallbackRedirect = getRedirectPathFromWhereToGo(data.wheretogo);
     const isUnfinished = fallbackRedirect.startsWith("/signup/");
     const pendingRedirect = getPendingRedirect();
 
-    // unfinished user must finish steps first
     if (isUnfinished) {
       if (pendingRedirect) {
         window.location.replace(
@@ -217,7 +327,6 @@ const onLogin = async (e: React.FormEvent) => {
       return;
     }
 
-    // finished user goes to pasted page if available
     if (pendingRedirect) {
       clearPendingRedirect();
       window.location.replace(pendingRedirect);
@@ -225,10 +334,11 @@ const onLogin = async (e: React.FormEvent) => {
     }
 
     window.location.replace(fallbackRedirect);
-     
   } catch (error) {
     console.log(error);
-    showToast('error', "Something went wrong. Please try again.");
+    showToast("error", "Something went wrong. Please try again.");
+    recaptchaRef.current?.reset();
+    setCaptchaToken(null);
   } finally {
     setLoading(false);
   }
@@ -335,8 +445,8 @@ const onLogin = async (e: React.FormEvent) => {
                           />
                       </div>
 
-                      <h1 className="text-center text-[26px] font-bold tracking-tight text-gray-900">Welcome back!</h1>
-                      <p className="mt-1 text-center text-[14px] text-gray-500">Enter your credentials to access your SMTPMaster account.</p>
+                      <h1 className="text-center text-[32px] font-bold tracking-tight text-gray-900">Welcome back!</h1>
+                      <p className="mt-1 text-center text-[18px] text-gray-500">Enter your credentials to access your SMTPMaster account.</p>
                     </div>
 
                     <form onSubmit={onLogin} className="space-y-4">
@@ -378,25 +488,33 @@ const onLogin = async (e: React.FormEvent) => {
                       </div>
 
                       <div className="flex items-center justify-end">
-                        <Link href="/forgot_password" className="text-sm font-medium text-[#ff7800] transition hover:text-[#e66c00]">Forgot your password?</Link>
+                        <Link href="/forgot_password" className="text-[18px] font-medium text-[#ff7800] transition hover:text-[#e66c00]">Forgot your password?</Link>
+                      </div>
+                      <div className="mt-4">
+                        <ReCAPTCHA
+                          ref={recaptchaRef}
+                          sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ""}
+                          onChange={(token) => setCaptchaToken(token)}
+                          onExpired={() => setCaptchaToken(null)}
+                        />
                       </div>
 
                       <button
                         type="submit"
                         disabled={loading}
-                        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-70"
+                        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-lg font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-70"
                       >
                         {loading ? <><Loader2 className="h-5 w-5 animate-spin" /><span>Signing in...</span></> : <span>Login</span>}
                       </button>
                     </form>
 
                     <div className="mt-5">
-                      <p className="text-center text-sm text-gray-500">
+                      <p className="text-center text-[18px] text-gray-500">
                         Not registered yet? <Link href={signupHref} className="font-semibold text-[#ff7800] hover:text-[#e66c00]">Create an Account</Link>
                       </p>
                     </div>
 
-                    <div className="mt-7 text-center text-xs text-gray-400">© SMTPMaster. All rights reserved.</div>
+                    <div className="mt-7 text-center text-sm text-gray-400">© SMTPMaster. All rights reserved.</div>
                   </div>
                 </div>
               </div>

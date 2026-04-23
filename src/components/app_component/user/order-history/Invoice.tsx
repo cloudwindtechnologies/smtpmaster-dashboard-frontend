@@ -83,6 +83,10 @@ function roundMoney(value: number) {
   return Math.round(Number(value) || 0);
 }
 
+function roundToTwo(value: number) {
+  return Number((Number(value) || 0).toFixed(2));
+}
+
 function formatInvoiceMoney(value: number, currency: "INR" | "USD") {
   const safeValue = roundMoney(value);
 
@@ -93,7 +97,40 @@ function formatInvoiceMoney(value: number, currency: "INR" | "USD") {
   return `$${safeValue}`;
 }
 
-function numberToWords(num: number, currency: "INR" | "USD") {
+function formatTaxMoney(value: number, currency: "INR" | "USD") {
+  const safeValue = roundToTwo(value).toFixed(2);
+
+  if (currency === "INR") {
+    return `Rs.${safeValue}/-`;
+  }
+
+  return `$${safeValue}`;
+}
+
+function formatRoundOff(value: number, currency: "INR" | "USD") {
+  const normalizedValue = roundToTwo(value);
+  const absValue = Math.abs(normalizedValue).toFixed(2);
+
+  if (currency === "INR") {
+    return `${normalizedValue < 0 ? "-" : "+"} Rs.${absValue}`;
+  }
+
+  return `${normalizedValue < 0 ? "-" : "+"} $${absValue}`;
+}
+
+function getErrorMessage(error: unknown, fallback = "Something went wrong") {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  return fallback;
+}
+
+function numberToWords(num: number) {
   if (!Number.isFinite(num)) return "-";
 
   const belowTwenty = [
@@ -166,7 +203,7 @@ function numberToWords(num: number, currency: "INR" | "USD") {
   };
 
   const rounded = Math.round(num);
-  return `${toWords(rounded)} ${currency === "INR" ? "Only" : "Only"}`;
+  return `${toWords(rounded)} Only`;
 }
 
 function InvoiceSkeleton() {
@@ -277,9 +314,9 @@ export default function InvoicePage() {
         }
 
         setData(normalized);
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
-        setErr(e?.message || "Something went wrong");
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setErr(getErrorMessage(error));
       } finally {
         setLoading(false);
       }
@@ -311,18 +348,25 @@ export default function InvoicePage() {
 
   const quantity = Math.max(1, Math.round(toNumber(invoice?.quantity || 1)));
 
-  const totalAmount = roundMoney(toNumber(invoice?.amount));
-  const discount = roundMoney(toNumber(invoice?.discount));
-  const tax = roundMoney(toNumber(invoice?.tax));
+  const rawAmount = toNumber(invoice?.amount);
+  const rawDiscount = toNumber(invoice?.discount);
+  const rawTax = toNumber(invoice?.tax);
 
-  const subtotalAfterDiscount = roundMoney(Math.max(totalAmount - tax, 0));
-  const planPrice = roundMoney(subtotalAfterDiscount + discount);
+  // Rounded values for invoice display
+  const totalAmount = roundMoney(rawAmount);
+  const discount = roundMoney(rawDiscount);
+  const roundedTax = roundMoney(rawTax);
+
+  // Keep plan/taxable amounts as plain values by using rounded tax here.
+  const subtotalAfterDiscount = Math.max(totalAmount - roundedTax, 0);
+  const planPrice = subtotalAfterDiscount + discount;
 
   const unitPrice = quantity > 0 ? roundMoney(planPrice / quantity) : planPrice;
 
-  const cgst = isWestBengal ? roundMoney(tax / 2) : 0;
-  const sgst = isWestBengal ? roundMoney(tax / 2) : 0;
-  const igst = isIndia && !isWestBengal ? roundMoney(tax) : 0;
+  // Show tax with decimals while keeping the total amount rounded.
+  const cgst = isWestBengal ? roundToTwo(rawTax / 2) : 0;
+  const sgst = isWestBengal ? roundToTwo(rawTax - cgst) : 0;
+  const igst = isIndia && !isWestBengal ? roundToTwo(rawTax) : 0;
 
   const invoiceNo = invoice?.invoice_id_new || invoice?.invoice_id || "-";
   const billToName = invoice?.user_or_company_name || invoice?.email || "-";
@@ -337,13 +381,12 @@ export default function InvoicePage() {
     .filter(Boolean)
     .join(", ");
 
-  const totalInWords = useMemo(
-    () => numberToWords(totalAmount, displayCurrency),
-    [totalAmount, displayCurrency]
-  );
+  const totalInWords = useMemo(() => numberToWords(totalAmount), [totalAmount]);
 
   const showIGST = isIndia && !isWestBengal;
   const showCGSTSGST = isWestBengal;
+  const displayedTaxTotal = showCGSTSGST ? cgst + sgst : showIGST ? igst : roundToTwo(rawTax);
+  const roundOffValue = roundToTwo(totalAmount - (subtotalAfterDiscount + displayedTaxTotal));
 
   const handelDwonload = async (invoiceId: string) => {
     try {
@@ -388,8 +431,8 @@ export default function InvoicePage() {
       a.remove();
 
       window.URL.revokeObjectURL(url);
-    } catch (e: any) {
-      alert(e?.message || "Something went wrong");
+    } catch (error: unknown) {
+      alert(getErrorMessage(error));
     } finally {
       setDownloading(false);
     }
@@ -418,10 +461,14 @@ export default function InvoicePage() {
             >
               <div className="h-full flex flex-col justify-center px-3 sm:px-4">
                 <div className="relative w-[250px] sm:w-[350px] md:w-[400px] h-[50px] sm:h-[70px] md:h-[80px]">
-                  <img
+                  <Image
                     src="/CloudwindLogo.png"
                     alt="Cloudwind Logo"
+                    fill
+                    sizes="(max-width: 640px) 250px, (max-width: 768px) 350px, 400px"
                     className="object-contain object-left"
+                    priority
+                    unoptimized
                   />
                 </div>
                 <p className="truncate">CLOUDWIND TECHNOLOGIES LLP</p>
@@ -434,12 +481,15 @@ export default function InvoicePage() {
             <div className="w-full h-full bg-blue-600 flex justify-end items-center sm:px-6 text-white text-right">
               <div className="w-[55%] sm:w-[45%] text-white py-2 sm:py-4 text-right text-[10px] sm:text-xs space-y-0.5 sm:space-y-1 leading-4 sm:leading-5">
                 <p className="truncate text-[1.01rem]">+91 7439680211</p>
-                <p className="truncate text-[1.01rem] hidden xs:block">LLP Identification Number: AAT-7224</p>
+                <p className="truncate text-[1.01rem] hidden xs:block">
+                  LLP Identification Number: AAT-7224
+                </p>
                 <p className="truncate text-[1.01rem]">www.cloudwind.in</p>
                 <p className="truncate text-[1.01rem]">info@cloudwind.in</p>
                 <p className="mt-1 text-[1.01rem]">
-                  OFFICE:- 5, Shahid Khudiram Bose Sarani,<br /> Opposite Ajanta
-                  Apartment Ichapur, <br /> Howrah, West Bengal, India, 711104,
+                  OFFICE:- 5, Shahid Khudiram Bose Sarani,
+                  <br /> Opposite Ajanta Apartment Ichapur, <br /> Howrah, West
+                  Bengal, India, 711104,
                 </p>
                 <p className="truncate text-[1.01rem] mb-1">{company.gstin}</p>
               </div>
@@ -591,7 +641,7 @@ export default function InvoicePage() {
                       <span className="float-right text-xs sm:text-sm">IGST @ 18%</span>
                     </td>
                     <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
-                      {formatInvoiceMoney(igst, displayCurrency)}
+                      {formatTaxMoney(igst, displayCurrency)}
                     </td>
                   </tr>
                 )}
@@ -603,7 +653,7 @@ export default function InvoicePage() {
                         <span className="float-right text-xs sm:text-sm">CGST @ 9%</span>
                       </td>
                       <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
-                        {formatInvoiceMoney(cgst, displayCurrency)}
+                        {formatTaxMoney(cgst, displayCurrency)}
                       </td>
                     </tr>
 
@@ -612,11 +662,20 @@ export default function InvoicePage() {
                         <span className="float-right text-xs sm:text-sm">SGST @ 9%</span>
                       </td>
                       <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
-                        {formatInvoiceMoney(sgst, displayCurrency)}
+                        {formatTaxMoney(sgst, displayCurrency)}
                       </td>
                     </tr>
                   </>
                 )}
+
+                <tr>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>
+                    <span className="float-right text-xs sm:text-sm">Round Off</span>
+                  </td>
+                  <td className="border border-gray-800 px-2 sm:px-4 py-2 text-right text-xs sm:text-sm">
+                    {formatRoundOff(roundOffValue, displayCurrency)}/-
+                  </td>
+                </tr>
 
                 <tr>
                   <td className="border border-gray-800 px-2 sm:px-4 py-2" colSpan={4}>

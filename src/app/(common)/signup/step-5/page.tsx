@@ -296,10 +296,11 @@ export default function OtherInfoPage() {
                     disabled={loading}
                   >
                     <option value="">Select contact range</option>
-                    <option value="1-300">1–300 contacts</option>
-                    <option value="301-1000">301–1000 contacts</option>
-                    <option value="1001-5000">1001–5000 contacts</option>
-                    <option value="5000+">5000+ contacts</option>
+                    <option value="999-1000">less than 1000</option>
+                    <option value="1001-10000">1000-10000 contacts</option>
+                    <option value="10001-50000">10001-50000 contacts</option>
+                    <option value="50001-100000">50001-100000 contacts</option>
+                    <option value="100001+">100001+ contacts</option>
                   </select>
                 </div>
                 {errors.hmcdh && <p className="mt-1 text-xs text-red-500">{errors.hmcdh}</p>}
