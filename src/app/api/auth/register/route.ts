@@ -15,8 +15,27 @@ export async function POST(req: Request) {
     });
 
     const data = await res.json().catch(() => ({}));
+    const response = NextResponse.json(
+      {
+        ...data,
+        role:
+          data?.role === 1 || data?.role === "1" || data?.role === "superadmin"
+            ? "superadmin"
+            : "user",
+      },
+      { status: res.status }
+    );
 
-    return NextResponse.json(data, { status: res.status });
+    if (res.ok && data?.token) {
+      response.cookies.set("token", String(data.token), {
+        httpOnly: false,
+        path: "/",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    }
+
+    return response;
   } catch (e: any) {
     return NextResponse.json(
       { code: 500, error: "Server error", details: e?.message },

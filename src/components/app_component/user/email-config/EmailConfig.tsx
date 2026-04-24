@@ -22,9 +22,19 @@ import {
   Server,
   X,
   KeyRound,
+  Users,
+  BarChart,
+  Play,
+  ShieldCheck,
+  Headset,
+  Loader2,
+  MailCheck,
+  PackageCheck,
+  Globe,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { token } from "../../common/http";
+import Image from "next/image";
 
 type MainTab = "smtp" | "api" | "campaign";
 type CodeTab = "curl" | "php" | "python" | "nodejs" | "ruby";
@@ -35,23 +45,74 @@ type EmailConfigRow = {
   user_id: number;
   email_send_type: EmailSendType;
   host: string | null;
-  port: string | null; // ❌ ignore backend port
+  port: string | null;
   username: string | null;
-  password: string | null; // hashed (not used in UI)
+  password: string | null;
   app_url: string | null;
   status: string;
-  without_hash?: string | null; // ✅ plain password / api key
+  without_hash?: string | null;
 };
 
 type EmailConfigResponse = {
   email_config?: EmailConfigRow[];
 };
 
-export default function EmailSystemConfig() {
+type DomainItem = {
+  id: number;
+  domain_name: string;
+  spf_is_valid?: string | number | null;
+  dkim_is_valid?: string | number | null;
+  dmarc_is_valid?: string | number | null;
+};
+
+type DomainInfoResponse = {
+  data?: {
+    domainList?: DomainItem[];
+  };
+  code?: number;
+  message?: string;
+};
+
+type PlanItem = {
+  plan_id: number;
+  package_name: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+};
+
+type PlanInfoResponse = {
+  draw?: number;
+  recordsTotal?: number;
+  recordsFiltered?: number;
+  data?: PlanItem[];
+};
+
+export default function EmailConfig() {
   const router = useRouter();
 
-  // ✅ PUT YOUR REAL ENDPOINT HERE
-  const CONFIG_URL = "api/email-config/useEmailConfig";
+  const CONFIG_URL = "/api/email-config/useEmailConfig";
+  const PLAN_URL = "/api/package-info/get_all_plans";
+
+  // Step 1: Plan states
+  const [loadingPlan, setLoadingPlan] = useState(true);
+  const [planError, setPlanError] = useState("");
+  const [hasActivePlan, setHasActivePlan] = useState(false);
+  const [activePlanName, setActivePlanName] = useState("");
+  const [activePlanEndDate, setActivePlanEndDate] = useState("");
+
+  // Step 2/3: Email config states
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [hasEmailConfig, setHasEmailConfig] = useState(false);
+  const [emailSendType, setEmailSendType] = useState<EmailSendType>("smtp");
+
+  // Step 2: Domain validation states
+  const [domainLoading, setDomainLoading] = useState(false);
+  const [hasValidDomain, setHasValidDomain] = useState(false);
+  const [validDomainName, setValidDomainName] = useState("");
+  const [domainListEmpty, setDomainListEmpty] = useState(false);
+  const [domainError, setDomainError] = useState("");
 
   // Tabs
   const [mainTab, setMainTab] = useState<MainTab>("smtp");
@@ -63,23 +124,17 @@ export default function EmailSystemConfig() {
   const [overlayMounted, setOverlayMounted] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(false);
 
-  // ✅ Config states
-  const [loadingConfig, setLoadingConfig] = useState(true);
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [emailSendType, setEmailSendType] = useState<EmailSendType>("smtp");
-
-  // ✅ Values from backend (used depending on send type)
-  // SMTP page values (only meaningful when email_send_type === "smtp")
+  // SMTP page values
   const [smtpHost, setSmtpHost] = useState("smtp.gmail.com");
   const [smtpUsername, setSmtpUsername] = useState("user@example.com");
   const [smtpPasswordPlain, setSmtpPasswordPlain] = useState("password123");
 
-  // Campaign page values (only meaningful when email_send_type === "app")
+  // Campaign page values
   const [campaignAppUrl, setCampaignAppUrl] = useState("");
   const [campaignUsername, setCampaignUsername] = useState("");
   const [campaignPassword, setCampaignPassword] = useState("");
 
-  // API tab API KEY (from without_hash)
+  // API tab API KEY
   const [apiKey, setApiKey] = useState("");
 
   // Visibility toggles
@@ -87,14 +142,24 @@ export default function EmailSystemConfig() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showCampaignPassword, setShowCampaignPassword] = useState(false);
 
-  // Port selection (✅ NOT from backend)
+  // Port selection
   const [port, setPort] = useState("587");
   const [encryption, setEncryption] = useState("NO");
 
-  // ✅ Put your posted image in: /public/images/api-code-actions.png
   const API_ACTIONS_IMAGE_SRC = "/images/api-code-actions.png";
 
-  // Auto encryption logic
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return dateStr;
+
+    return date.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
   const handlePortChange = (value: string) => {
     setPort(value);
     if (value === "25") setEncryption("NO");
@@ -102,14 +167,12 @@ export default function EmailSystemConfig() {
     if (value === "465") setEncryption("SSL");
   };
 
-  // Copy function with feedback
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // Language icons mapping
   const getLanguageIcon = (lang: CodeTab) => {
     switch (lang) {
       case "curl":
@@ -127,7 +190,6 @@ export default function EmailSystemConfig() {
     }
   };
 
-  // Language colors
   const getLanguageColor = (lang: CodeTab) => {
     switch (lang) {
       case "curl":
@@ -145,7 +207,6 @@ export default function EmailSystemConfig() {
     }
   };
 
-  // ✅ Lock body scroll when fullscreen is open
   useEffect(() => {
     if (codeFullscreen) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
@@ -154,17 +215,14 @@ export default function EmailSystemConfig() {
     };
   }, [codeFullscreen]);
 
-  // ✅ ESC to close fullscreen
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeFullscreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Mount/unmount overlay with animation
   useEffect(() => {
     let t1: any;
     let t2: any;
@@ -186,23 +244,88 @@ export default function EmailSystemConfig() {
   const openFullscreen = () => setCodeFullscreen(true);
   const closeFullscreen = () => setCodeFullscreen(false);
 
-  // ✅ Fetch config (production)
+  // STEP 1: LOAD ACTIVE PLAN
   useEffect(() => {
+    let active = true;
+
+    const loadPlanInfo = async () => {
+      try {
+        setLoadingPlan(true);
+        setPlanError("");
+
+        const res = await fetch(PLAN_URL, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`,
+          },
+          cache: "no-store",
+        });
+
+        if (res.status === 401) {
+          router.replace("/login");
+          return;
+        }
+
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`API error: ${res.status} ${txt}`);
+        }
+
+        const data = (await res.json()) as PlanInfoResponse;
+        const plans = Array.isArray(data?.data) ? data.data : [];
+
+        if (!active) return;
+
+        const activePlan =
+          plans.find(
+            (item) => String(item?.status || "").trim().toLowerCase() === "active"
+          ) || null;
+
+        if (activePlan) {
+          setHasActivePlan(true);
+          setActivePlanName(activePlan.package_name || "");
+          setActivePlanEndDate(activePlan.end_date || "");
+        } else {
+          setHasActivePlan(false);
+          setActivePlanName("");
+          setActivePlanEndDate("");
+        }
+      } catch (err: any) {
+        if (!active) return;
+        setPlanError(err?.message || "Failed to load plan info");
+      } finally {
+        if (active) setLoadingPlan(false);
+      }
+    };
+
+    loadPlanInfo();
+
+    return () => {
+      active = false;
+    };
+  }, [PLAN_URL, router]);
+
+  // STEP 2/3/MAIN PAGE: LOAD EMAIL CONFIG ONLY IF ACTIVE PLAN EXISTS
+  useEffect(() => {
+    if (loadingPlan || !hasActivePlan) return;
+
     let alive = true;
-    const controller = new AbortController();
 
     async function loadConfig() {
       try {
         setLoadingConfig(true);
         setConfigError(null);
 
-        const res = await fetch(`/api/email-config/useEmailConfig`, {
+        const res = await fetch(CONFIG_URL, {
           method: "GET",
           headers: {
             Accept: "application/json",
-            "Content-Type": "application/json", 
-            Authorization :`Bearer ${token()}`
-          }
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`,
+          },
+          cache: "no-store",
         });
 
         if (res.status === 401) {
@@ -217,37 +340,48 @@ export default function EmailSystemConfig() {
 
         const data = (await res.json()) as EmailConfigResponse;
         const row = data?.email_config?.[0];
-        if (!row) throw new Error("No email_config found");
 
         if (!alive) return;
 
-        const type: EmailSendType = row.email_send_type === "app" ? "app" : "smtp";
-        setEmailSendType(type);
+        if (row && row.id) {
+          setHasEmailConfig(true);
 
-        // ✅ Email Submission API -> API KEY (use without_hash)
-        setApiKey((row.without_hash ?? "") || "");
+          const type: EmailSendType =
+            row.email_send_type === "app" ? "app" : "smtp";
+          setEmailSendType(type);
 
-        if (type === "smtp") {
-          // ✅ Fill SMTP tab like backend (host/username/without_hash password)
-          setSmtpHost(row.host ?? "");
-          setSmtpUsername(row.username ?? "");
-          setSmtpPasswordPlain((row.without_hash ?? "") || "");
-          // auto switch if campaign is open
-          if (mainTab === "campaign") setMainTab("smtp");
+          setApiKey((row.without_hash ?? "") || "");
+
+          if (type === "smtp") {
+            setSmtpHost(row.host ?? "");
+            setSmtpUsername(row.username ?? "");
+            setSmtpPasswordPlain((row.without_hash ?? "") || "");
+            setPort(row.port ?? "587");
+
+            if (row.port === "465") setEncryption("SSL");
+            else setEncryption("NO");
+
+            if (mainTab === "campaign") setMainTab("smtp");
+          } else {
+            setCampaignAppUrl(row.app_url ?? "");
+            setCampaignUsername(row.username ?? "");
+            setCampaignPassword((row.without_hash ?? "") || "");
+            if (mainTab === "smtp") setMainTab("campaign");
+          }
         } else {
-          // ✅ Fill Campaign tab fields from backend
-          // App url -> Campaign URL field (renamed label to App URL)
-          setCampaignAppUrl(row.app_url ?? "");
-          // username -> Campaign username
-          setCampaignUsername(row.username ?? "");
-          // without_hash -> Campaign password (plain)
-          setCampaignPassword((row.without_hash ?? "") || "");
-          // auto switch if smtp is open
-          if (mainTab === "smtp") setMainTab("campaign");
+          setHasEmailConfig(false);
         }
       } catch (err: any) {
-        if (err?.name === "AbortError") return;
-        setConfigError(err?.message || "Failed to load config");
+        if (!alive) return;
+
+        if (
+          err?.message?.includes("404") ||
+          err?.message?.includes("No email_config found")
+        ) {
+          setHasEmailConfig(false);
+        } else {
+          setConfigError(err?.message || "Failed to load config");
+        }
       } finally {
         if (alive) setLoadingConfig(false);
       }
@@ -257,16 +391,83 @@ export default function EmailSystemConfig() {
 
     return () => {
       alive = false;
-      controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [CONFIG_URL, router]);
+  }, [loadingPlan, hasActivePlan, CONFIG_URL, router, mainTab]);
 
-  // ✅ Disable logic
+  // STEP 2/3: DOMAIN CHECK ONLY IF ACTIVE PLAN EXISTS AND EMAIL CONFIG DOES NOT EXIST
+  useEffect(() => {
+    if (loadingPlan || !hasActivePlan || loadingConfig || hasEmailConfig) return;
+
+    let active = true;
+
+    const loadDomainInfo = async () => {
+      try {
+        setDomainLoading(true);
+        setDomainError("");
+
+        const res = await fetch("/api/domain-info", {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`,
+          },
+          cache: "no-store",
+        });
+
+        if (res.status === 401) {
+          router.replace("/login");
+          return;
+        }
+
+        const data: DomainInfoResponse = await res.json();
+        const domainList = Array.isArray(data?.data?.domainList)
+          ? data.data!.domainList!
+          : [];
+
+        if (!active) return;
+
+        if (domainList.length === 0) {
+          setDomainListEmpty(true);
+          setHasValidDomain(false);
+          setValidDomainName("");
+          return;
+        }
+
+        const validDomain = domainList.find((item) => {
+          const spf = String(item.spf_is_valid ?? "").trim() === "1";
+          const dkim = String(item.dkim_is_valid ?? "").trim() === "1";
+          const dmarc = String(item.dmarc_is_valid ?? "").trim() === "1";
+          return spf && dkim && dmarc;
+        });
+
+        if (validDomain) {
+          setHasValidDomain(true);
+          setValidDomainName(validDomain.domain_name || "");
+          setDomainListEmpty(false);
+        } else {
+          setHasValidDomain(false);
+          setValidDomainName("");
+          setDomainListEmpty(false);
+        }
+      } catch (err: any) {
+        if (!active) return;
+        setDomainError(err?.message || "Failed to load domain info");
+      } finally {
+        if (active) setDomainLoading(false);
+      }
+    };
+
+    loadDomainInfo();
+
+    return () => {
+      active = false;
+    };
+  }, [loadingPlan, hasActivePlan, loadingConfig, hasEmailConfig, router]);
+
   const smtpDisabled = emailSendType === "app";
   const campaignDisabled = emailSendType === "smtp";
 
-  // Code examples (updated to API KEY only)
   const codeExamples = useMemo(
     () => ({
       curl: `curl -X POST https://api.example.com/v3/send   \\
@@ -353,8 +554,153 @@ curl_close(<span class="text-orange-300">$ch</span>);
     []
   );
 
+  const StepProgress = ({
+    step,
+    title,
+    subtitle,
+  }: {
+    step: 1 | 2 | 3;
+    title: string;
+    subtitle: string;
+  }) => {
+    const isDone1 = step > 1;
+    const isDone2 = step > 2;
+
+    return (
+      <div className="mb-8">
+        <div className="flex items-start justify-center gap-2 sm:gap-5">
+          <div className="flex flex-col items-center">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-full border-4 text-base font-bold ${
+                isDone1
+                  ? "border-[#ff7800] bg-[#ff7800] text-white"
+                  : step === 1
+                  ? "border-[#ff7800]/30 bg-white text-[#ff7800]"
+                  : "border-gray-200 bg-white text-gray-400"
+              }`}
+            >
+              {isDone1 ? <Check className="h-6 w-6" /> : "1"}
+            </div>
+            <p className="mt-2 text-center text-xs font-semibold text-gray-500">
+              Plan
+            </p>
+          </div>
+
+          <div
+            className={`mt-5 h-1 w-10 rounded-full sm:w-20 ${
+              step > 1 ? "bg-[#ff7800]" : "bg-gray-200"
+            }`}
+          />
+
+          <div className="flex flex-col items-center">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-full border-4 text-base font-bold ${
+                isDone2
+                  ? "border-[#ff7800] bg-[#ff7800] text-white"
+                  : step === 2
+                  ? "border-[#ff7800]/30 bg-white text-[#ff7800]"
+                  : "border-gray-200 bg-white text-gray-400"
+              }`}
+            >
+              {isDone2 ? <Check className="h-6 w-6" /> : "2"}
+            </div>
+            <p className="mt-2 text-center text-xs font-semibold text-gray-500">
+              Domain
+            </p>
+          </div>
+
+          <div
+            className={`mt-5 h-1 w-10 rounded-full sm:w-20 ${
+              step > 2 ? "bg-[#ff7800]" : "bg-gray-200"
+            }`}
+          />
+
+          <div className="flex flex-col items-center">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-full border-4 text-base font-bold ${
+                step === 3
+                  ? "border-[#ff7800]/30 bg-white text-[#ff7800]"
+                  : "border-gray-200 bg-white text-gray-400"
+              }`}
+            >
+              3
+            </div>
+            <p className="mt-2 text-center text-xs font-semibold text-gray-500">
+              Ready
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 text-center">
+          <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
+          <p className="mt-2 text-sm text-gray-500">{subtitle}</p>
+        </div>
+      </div>
+    );
+  };
+
+  const InfoCard = ({
+    step,
+    icon,
+    title,
+    subtitle,
+    children,
+  }: {
+    step: 1 | 2 | 3;
+    icon: React.ReactNode;
+    title: string;
+    subtitle: string;
+    children: React.ReactNode;
+  }) => (
+    <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+      <div className="mx-auto max-w-full">
+        <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+          <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                <Image
+                  src="/Logoicon.png"
+                  alt="SMTPMaster Logo"
+                  width={28}
+                  height={28}
+                  className="object-contain"
+                />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-white sm:text-xl">
+                  Email Configuration
+                </h1>
+                <p className="text-sm text-white/90">
+                  Complete the required setup to access your sending details
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 py-10 sm:px-8 sm:py-12">
+            <StepProgress step={step} title={title} subtitle={subtitle} />
+
+            <div className="rounded-[24px] border border-gray-100 bg-[#fafafa] p-6 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50">
+                {icon}
+              </div>
+
+              {children}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const CodeExamplesCard = ({ fullscreen = false }: { fullscreen?: boolean }) => (
-    <div className={fullscreen ? "bg-gray-900 rounded-none shadow-none border-0 p-6 w-full h-full" : "bg-gray-900 rounded-2xl shadow-xl border border-gray-800 p-6"}>
+    <div
+      className={
+        fullscreen
+          ? "bg-gray-900 rounded-none shadow-none border-0 p-6 w-full h-full"
+          : "bg-gray-900 rounded-2xl shadow-xl border border-gray-800 p-6"
+      }
+    >
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
           <div className="h-10 w-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
@@ -376,7 +722,11 @@ curl_close(<span class="text-orange-300">$ch</span>);
             className="p-2 hover:bg-gray-800 rounded-lg transition-all text-gray-400 relative z-10 active:scale-95"
             title={codeFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           >
-            {codeFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {codeFullscreen ? (
+              <Minimize2 className="h-4 w-4" />
+            ) : (
+              <Maximize2 className="h-4 w-4" />
+            )}
           </button>
 
           <button className="p-2 hover:bg-gray-800 rounded-lg transition-all text-gray-400 relative z-10 active:scale-95">
@@ -403,7 +753,11 @@ curl_close(<span class="text-orange-300">$ch</span>);
       </div>
 
       <div className="relative group">
-        <div className={`absolute inset-0 bg-gradient-to-r ${getLanguageColor(codeTab)} opacity-20 rounded-xl blur-xl group-hover:opacity-30 transition-all`} />
+        <div
+          className={`absolute inset-0 bg-gradient-to-r ${getLanguageColor(
+            codeTab
+          )} opacity-20 rounded-xl blur-xl group-hover:opacity-30 transition-all`}
+        />
         <div className="relative bg-gray-950 rounded-xl border border-gray-800 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
             <div className="flex items-center space-x-2">
@@ -439,8 +793,16 @@ curl_close(<span class="text-orange-300">$ch</span>);
             </button>
           </div>
 
-          <pre className={["p-5 text-sm font-mono overflow-x-auto overflow-y-auto transition-all duration-300 ease-out", fullscreen ? "h-[70vh] lg:h-[78vh]" : "h-[260px]"].join(" ")}>
-            <code className="text-gray-300 whitespace-pre" dangerouslySetInnerHTML={{ __html: codeExamples[codeTab] }} />
+          <pre
+            className={[
+              "p-5 text-sm font-mono overflow-x-auto overflow-y-auto transition-all duration-300 ease-out",
+              fullscreen ? "h-[70vh] lg:h-[78vh]" : "h-[260px]",
+            ].join(" ")}
+          >
+            <code
+              className="text-gray-300 whitespace-pre"
+              dangerouslySetInnerHTML={{ __html: codeExamples[codeTab] }}
+            />
           </pre>
         </div>
       </div>
@@ -451,7 +813,9 @@ curl_close(<span class="text-orange-300">$ch</span>);
           <div>
             <p className="text-xs text-gray-400">
               <span className="text-orange-500 font-medium">Pro tip:</span> Replace
-              <code className="mx-1 px-1.5 py-0.5 bg-gray-700 rounded text-orange-400">YOUR_API_KEY</code>
+              <code className="mx-1 px-1.5 py-0.5 bg-gray-700 rounded text-orange-400">
+                YOUR_API_KEY
+              </code>
               with your API Key from the left panel
             </p>
           </div>
@@ -459,95 +823,330 @@ curl_close(<span class="text-orange-300">$ch</span>);
       </div>
     </div>
   );
+  const SkeletonBlock = ({ className = "" }: { className?: string }) => (
+  <div className={`animate-pulse bg-gray-200 rounded-lg ${className}`} />
+);
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* ✅ Fullscreen overlay (Animated) */}
-      {overlayMounted && (
-        <div
-          className={[
-            "fixed inset-0 z-[9999] backdrop-blur-sm transition-all duration-300 ease-out",
-            overlayVisible ? "bg-black/60 opacity-100" : "bg-black/0 opacity-0",
-          ].join(" ")}
-          onMouseDown={(e) => {
-            if (e.currentTarget === e.target) closeFullscreen();
-          }}
-        >
-          <div className="absolute inset-0 p-4 sm:p-6">
-            <div
-              className={[
-                "w-full h-full rounded-2xl overflow-hidden border border-gray-800 shadow-2xl bg-gray-900",
-                "transition-all duration-300 ease-out will-change-transform",
-                overlayVisible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-[0.97] translate-y-2",
-              ].join(" ")}
-            >
-              <div className="w-full h-full">
-                <CodeExamplesCard fullscreen />
+  // STEP 1 loading
+  if (loadingPlan) {
+    return (
+    <div className="w-full bg-white rounded-[24px] border border-gray-200 shadow-[0_20px_60px_rgba(0,0,0,0.08)] overflow-hidden">
+    <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+      <div className="flex items-center gap-3">
+        <SkeletonBlock className="h-11 w-11 bg-white/30 rounded-xl" />
+        <div className="space-y-2">
+          <SkeletonBlock className="h-5 w-48 bg-white/30 rounded" />
+          <SkeletonBlock className="h-4 w-32 bg-white/20 rounded" />
+        </div>
+      </div>
+    </div>
+    <div className="p-6 sm:p-8 space-y-6">
+      <div className="flex justify-center gap-4">
+        <div className="flex flex-col items-center gap-2">
+          <SkeletonBlock className="h-12 w-12 rounded-full" />
+          <SkeletonBlock className="h-4 w-12 rounded" />
+        </div>
+        <SkeletonBlock className="h-1 w-20 mt-6 rounded-full" />
+        <div className="flex flex-col items-center gap-2">
+          <SkeletonBlock className="h-12 w-12 rounded-full" />
+          <SkeletonBlock className="h-4 w-12 rounded" />
+        </div>
+        <SkeletonBlock className="h-1 w-20 mt-6 rounded-full" />
+        <div className="flex flex-col items-center gap-2">
+          <SkeletonBlock className="h-12 w-12 rounded-full" />
+          <SkeletonBlock className="h-4 w-12 rounded" />
+        </div>
+      </div>
+      <div className="space-y-3 text-center">
+        <SkeletonBlock className="h-8 w-64 mx-auto rounded" />
+        <SkeletonBlock className="h-4 w-96 mx-auto rounded" />
+      </div>
+      <div className="rounded-[24px] border border-gray-100 bg-[#fafafa] p-6">
+        <div className="flex flex-col items-center gap-4">
+          <SkeletonBlock className="h-16 w-16 rounded-2xl" />
+          <SkeletonBlock className="h-6 w-48 rounded" />
+          <SkeletonBlock className="h-4 w-full max-w-md rounded" />
+          <SkeletonBlock className="h-4 w-full max-w-sm rounded" />
+        </div>
+      </div>
+    </div>
+  </div>
+    );
+  }
+
+  // STEP 1 error
+  if (planError) {
+    return (
+      <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+        <div className="mx-auto max-w-xl">
+          <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+            <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                  <Image
+                    src="/Logoicon.png"
+                    alt="SMTPMaster Logo"
+                    width={28}
+                    height={28}
+                    className="object-contain"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold text-white sm:text-xl">
+                    Error
+                  </h1>
+                  <p className="text-sm text-white/90">
+                    Something went wrong
+                  </p>
+                </div>
               </div>
+            </div>
+
+            <div className="px-6 py-14 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50">
+                <MailCheck className="h-8 w-8 text-red-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Unable to load plan info
+              </h2>
+              <p className="mt-2 text-sm text-gray-500">{planError}</p>
 
               <button
-                onClick={closeFullscreen}
-                className="absolute top-6 right-6 p-2 rounded-xl bg-gray-900/70 border border-gray-700 hover:bg-gray-800 text-gray-200 transition-all active:scale-95"
-                title="Close"
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white transition hover:bg-[#e66c00]"
               >
-                <X className="h-4 w-4" />
+                Try Again
               </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col">
-        <div className="flex-1 p-8 overflow-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">Email Configuration</h1>
-          </div>
+  // STEP 1 fail: no active plan
+  if (!hasActivePlan) {
+    return (
+      <InfoCard
+        step={1}
+        icon={<PackageCheck className="h-8 w-8 text-[#ff7800]" />}
+        title="Step 1: No Active Plan"
+        subtitle="Please activate a plan to continue"
+      >
+        <h3 className="text-xl font-bold text-gray-900">Active Plan / No Active Plan</h3>
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          It looks like you don’t currently have an active email marketing plan,
+          or your existing plan may have expired. To continue sending emails and
+          access your email sending details, please choose a plan that fits your needs.
+        </p>
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          Once your new plan is activated, you’ll be able to view your sending credentials,
+          track your email activity, and make the most of your email marketing tools.
+        </p>
 
-          <div className="mb-6 flex items-center gap-3">
-            {loadingConfig ? (
-              <div className="text-sm text-gray-500">Loading configuration…</div>
-            ) : configError ? (
-              <div className="text-sm text-red-600">{configError}</div>
-            ) : (
-              <div className="text-sm text-gray-600">
-                Active mode:{" "}
-                <span className="font-semibold text-gray-900">{emailSendType.toUpperCase()}</span>
+        <button
+          type="button"
+          onClick={() => router.push("/all-packages")}
+          className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white transition hover:bg-[#e66c00]"
+        >
+          View Plan
+        </button>
+      </InfoCard>
+    );
+  }
+
+  // EMAIL CONFIG loading after active plan
+  if (loadingConfig) {
+    return (
+      <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+        <div className="mx-auto max-w-xl">
+          <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+            <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                  <Image
+                    src="/Logoicon.png"
+                    alt="SMTPMaster Logo"
+                    width={28}
+                    height={28}
+                    className="object-contain"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold text-white sm:text-xl">
+                    Email Configuration
+                  </h1>
+                  <p className="text-sm text-white/90">
+                    Loading your settings...
+                  </p>
+                </div>
               </div>
-            )}
+            </div>
+
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50">
+                <Loader2 className="h-8 w-8 animate-spin text-[#ff7800]" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Loading configuration
+              </h2>
+              <p className="mt-2 text-sm text-gray-500">
+                Please wait while we load your email settings.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // config error
+  if (configError && hasEmailConfig === false) {
+    return (
+      <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+        <div className="mx-auto max-w-xl">
+          <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+            <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                  <Image
+                    src="/Logoicon.png"
+                    alt="SMTPMaster Logo"
+                    width={28}
+                    height={28}
+                    className="object-contain"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold text-white sm:text-xl">
+                    Error
+                  </h1>
+                  <p className="text-sm text-white/90">
+                    Something went wrong
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-14 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50">
+                <MailCheck className="h-8 w-8 text-red-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Unable to load configuration
+              </h2>
+              <p className="mt-2 text-sm text-gray-500">{configError}</p>
+
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white transition hover:bg-[#e66c00]"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MAIN PAGE - only after plan + domain + email config
+  if (hasEmailConfig) {
+    return (
+      <div
+        className="min-h-screen bg-[var(--page-bg)]"
+        style={{ borderRadius: "var(--page-radius)" }}
+      >
+        <div
+          className="bg-[var(--brand)] text-[var(--text-on-dark)]"
+          style={{ borderRadius: "var(--page-radius)" }}
+        >
+          <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+            <h1 className="text-xl font-bold tracking-tight">Email Configuration</h1>
+            <p className="mt-2 text-sm text-[var(--text-on-dark)]/80">
+              Manage SMTP settings, API credentials, and campaign sender configurations
+            </p>
+          </div>
+        </div>
+
+        {overlayMounted && (
+          <div
+            className={[
+              "fixed inset-0 z-[9999] backdrop-blur-sm transition-all duration-300 ease-out",
+              overlayVisible ? "bg-black/60 opacity-100" : "bg-black/0 opacity-0",
+            ].join(" ")}
+            onMouseDown={(e) => {
+              if (e.currentTarget === e.target) closeFullscreen();
+            }}
+          >
+            <div className="absolute inset-0 p-4 sm:p-6">
+              <div
+                className={[
+                  "w-full h-full rounded-2xl overflow-hidden border shadow-2xl",
+                  "transition-all duration-300 ease-out will-change-transform",
+                  overlayVisible
+                    ? "opacity-100 scale-100 translate-y-0"
+                    : "opacity-0 scale-[0.97] translate-y-2",
+                ].join(" ")}
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: "var(--surface)",
+                }}
+              >
+                <div className="w-full h-full">
+                  <CodeExamplesCard fullscreen />
+                </div>
+
+                <button
+                  onClick={closeFullscreen}
+                  className="absolute top-6 right-6 p-2 rounded-xl transition-all active:scale-95"
+                  style={{
+                    backgroundColor: "var(--surface-2)",
+                    borderColor: "var(--border)",
+                    color: "var(--text-soft)",
+                  }}
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <div className="text-sm text-[var(--text-body)]">
+              Active mode:{" "}
+              <span className="font-semibold text-[var(--foreground)]">
+                {emailSendType.toUpperCase()}
+              </span>
+            </div>
+
           </div>
 
-          {/* Main Tabs */}
-          <div className="border-b border-gray-200 mb-6">
+          <div className="border-b border-[var(--line-soft)] mb-6">
             <div className="flex space-x-8">
               <button
                 onClick={() => !smtpDisabled && setMainTab("smtp")}
                 disabled={smtpDisabled}
                 className={`pb-3 text-sm font-medium relative transition-all ${
-                  mainTab === "smtp" ? "text-orange-600" : "text-gray-500 hover:text-gray-700"
-                } ${smtpDisabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
+                  mainTab === "smtp" ? "" : "hover:opacity-80"
+                } ${smtpDisabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                style={
+                  mainTab === "smtp"
+                    ? { color: "var(--brand)" }
+                    : { color: "var(--text-soft)" }
+                }
               >
                 <span className="flex items-center space-x-2">
                   <Server className="h-4 w-4" />
                   <span>Outgoing SMTP Details</span>
                 </span>
                 {mainTab === "smtp" && !smtpDisabled && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-orange-600" />
-                )}
-              </button>
-
-              <button
-                onClick={() => setMainTab("api")}
-                className={`pb-3 text-sm font-medium relative transition-all ${
-                  mainTab === "api" ? "text-orange-600" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <span className="flex items-center space-x-2">
-                  <Zap className="h-4 w-4" />
-                  <span>Email Submission API</span>
-                </span>
-                {mainTab === "api" && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-orange-600" />
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--brand)]" />
                 )}
               </button>
 
@@ -555,66 +1154,91 @@ curl_close(<span class="text-orange-300">$ch</span>);
                 onClick={() => !campaignDisabled && setMainTab("campaign")}
                 disabled={campaignDisabled}
                 className={`pb-3 text-sm font-medium relative transition-all ${
-                  mainTab === "campaign" ? "text-orange-600" : "text-gray-500 hover:text-gray-700"
-                } ${campaignDisabled ? "opacity-40 cursor-not-allowed hover:text-gray-500" : ""}`}
+                  mainTab === "campaign" ? "" : "hover:opacity-80"
+                } ${campaignDisabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                style={
+                  mainTab === "campaign"
+                    ? { color: "var(--brand)" }
+                    : { color: "var(--text-soft)" }
+                }
               >
                 <span className="flex items-center space-x-2">
                   <Send className="h-4 w-4" />
                   <span>Email Campaign Sender</span>
                 </span>
                 {mainTab === "campaign" && !campaignDisabled && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 to-orange-600" />
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--brand)]" />
                 )}
               </button>
             </div>
           </div>
 
-          {/* SMTP TAB (backend-driven like you asked) */}
           {mainTab === "smtp" && (
             <div className="grid lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <div
+                className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)]"
+                style={{ borderRadius: "var(--page-radius)" }}
+              >
                 <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+                  <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg">
                     <Mail className="h-5 w-5 text-white" />
                   </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Your SMTP Setting</h2>
+                  <h2 className="text-xl font-semibold text-[var(--text-strong)]">
+                    Your SMTP Setting
+                  </h2>
                 </div>
 
                 <div className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Server Name</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      Server Name
+                    </label>
                     <div className="flex group">
                       <input
                         type="text"
                         value={smtpHost}
                         onChange={(e) => setSmtpHost(e.target.value)}
                         disabled={smtpDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
+                        className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                           smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "var(--page-radius) 0 0 var(--page-radius)",
+                        }}
                       />
                       <button
                         onClick={() => handleCopy(smtpHost, "smtp-server")}
                         disabled={smtpDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          smtpDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
+                        className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                          smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "smtp-server" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {copied === "smtp-server" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <Copy className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
 
-                  {/* ✅ Port NOT from backend */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Port</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      Port
+                    </label>
                     <select
                       value={port}
                       onChange={(e) => handlePortChange(e.target.value)}
                       disabled={smtpDisabled}
-                      className={`w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all bg-white ${
+                      className={`w-full px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                         smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                       }`}
+                      style={{ borderRadius: "var(--page-radius)" }}
                     >
                       <option value="25">25</option>
                       <option value="587">587</option>
@@ -623,36 +1247,60 @@ curl_close(<span class="text-orange-300">$ch</span>);
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Encryption</label>
-                    <input type="text" value={encryption} disabled className="w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-100 text-gray-700 font-medium" />
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      Encryption
+                    </label>
+                    <input
+                      type="text"
+                      value={encryption}
+                      disabled
+                      className="w-full px-4 py-3 text-sm font-medium text-[var(--text-body)] bg-[var(--surface-2)] border border-[var(--line-soft)]"
+                      style={{ borderRadius: "var(--page-radius)" }}
+                    />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      Username
+                    </label>
                     <div className="flex group">
                       <input
                         type="text"
                         value={smtpUsername}
                         onChange={(e) => setSmtpUsername(e.target.value)}
                         disabled={smtpDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
+                        className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                           smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "var(--page-radius) 0 0 var(--page-radius)",
+                        }}
                       />
                       <button
                         onClick={() => handleCopy(smtpUsername, "smtp-user")}
                         disabled={smtpDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          smtpDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
+                        className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                          smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "smtp-user" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {copied === "smtp-user" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <Copy className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      Password
+                    </label>
                     <div className="flex">
                       <div className="relative flex-1">
                         <input
@@ -660,121 +1308,161 @@ curl_close(<span class="text-orange-300">$ch</span>);
                           value={smtpPasswordPlain}
                           onChange={(e) => setSmtpPasswordPlain(e.target.value)}
                           disabled={smtpDisabled}
-                          className={`w-full border border-gray-200 rounded-l-xl px-4 py-3 pr-12 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
+                          className={`w-full px-4 py-3 pr-12 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                             smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                           }`}
+                          style={{
+                            borderRadius:
+                              "var(--page-radius) 0 0 var(--page-radius)",
+                          }}
                         />
                         <button
                           onClick={() => setShowSmtpPassword(!showSmtpPassword)}
                           disabled={smtpDisabled}
-                          className={`absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 ${
-                            smtpDisabled ? "opacity-50 cursor-not-allowed hover:text-gray-500" : ""
-                          }`}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-soft)]"
                         >
-                          {showSmtpPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          {showSmtpPassword ? (
+                            <EyeOff className="h-5 w-5" />
+                          ) : (
+                            <Eye className="h-5 w-5" />
+                          )}
                         </button>
                       </div>
                       <button
                         onClick={() => handleCopy(smtpPasswordPlain, "smtp-pass")}
                         disabled={smtpDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          smtpDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
+                        className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                          smtpDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "smtp-pass" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {copied === "smtp-pass" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <Copy className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right Column - Test SMTP (Send button bottom) */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-green-200">
-                    <Send className="h-5 w-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Test SMTP</h2>
-                </div>
-
-                <div className="space-y-4 flex-1">
-                  <input type="email" placeholder="From Email" disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                  <input type="email" placeholder="To Email" disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                  <input type="text" placeholder="Subject" disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                  <textarea placeholder="Body (HTML)" rows={4} disabled={smtpDisabled} className={`w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all resize-none ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                </div>
-
-                <div className="mt-auto pt-4">
-                  <div className="flex items-center space-x-3">
-                    <input type="text" placeholder="Captcha" disabled={smtpDisabled} className={`flex-1 border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${smtpDisabled ? "opacity-50 cursor-not-allowed" : ""}`} />
-                    <button disabled={smtpDisabled} className={`px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:from-orange-600 hover:to-orange-700 transition-all shadow-lg shadow-orange-200 flex items-center space-x-2 font-medium ${smtpDisabled ? "opacity-50 cursor-not-allowed hover:from-orange-500 hover:to-orange-600" : ""}`}>
-                      <Send className="h-4 w-4" />
-                      <span>Send</span>
-                    </button>
-                  </div>
-                </div>
+               <div className="border border-gray-200 bg-white p-6 rounded-2xl shadow-sm flex flex-col h-full">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">How to Use SMTP Settings</h2>
+                <p className="text-gray-600 mb-3">
+                  To start sending emails through SMTPMaster, simply configure your email application or system using the following SMTP details:
+                </p>
+                <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-3">
+                  <li><strong className="text-gray-800">Server Name:</strong> This is your SMTP host (e.g., smtp.server.name) where emails are sent from.</li>
+                  <li><strong className="text-gray-800">Username & Password:</strong> Use your SMTP credentials provided in your account dashboard to authenticate your sending.</li>
+                  <li><strong className="text-gray-800">Port Options:</strong> Port 25 or 587 – Standard SMTP ports (no encryption required). Port 465 – Use this with TLS encryption for a more secure connection.</li>
+                  <li><strong className="text-gray-800">Encryption:</strong> You can choose TLS for added security, or use non-encrypted ports if required.</li>
+                  <li><strong className="text-gray-800">Send From Address:</strong> Use any verified email address from your domain (e.g., yourname@yourdomain.com)</li>
+                </ul>
+                <p className="text-gray-600">
+                  Once these details are configured, your application will be able to send bulk or transactional emails reliably through our SMTP infrastructure.
+                </p>
               </div>
             </div>
           )}
 
-          {/* API TAB (remove username/pass, add API KEY) */}
           {mainTab === "api" && (
             <div className="grid lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <div
+                className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)]"
+                style={{ borderRadius: "var(--page-radius)" }}
+              >
                 <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-200">
+                  <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
                     <Zap className="h-5 w-5 text-white" />
                   </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Email Submission API</h2>
+                  <h2 className="text-xl font-semibold text-[var(--text-strong)]">
+                    Email Submission API
+                  </h2>
                 </div>
 
                 <div className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">API URL</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      API URL
+                    </label>
                     <div className="flex group">
                       <input
                         type="text"
-                        defaultValue="https://api.example.com/v3/send "
-                        className="flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                        defaultValue="https://api.example.com/v3/send"
+                        className="flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)]"
+                        style={{
+                          borderRadius:
+                            "var(--page-radius) 0 0 var(--page-radius)",
+                        }}
                       />
                       <button
-                        onClick={() => handleCopy("https://api.example.com/v3/send ", "api-url")}
-                        className="px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all"
+                        onClick={() =>
+                          handleCopy("https://api.example.com/v3/send", "api-url")
+                        }
+                        className="px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)]"
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "api-url" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {copied === "api-url" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <Copy className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
 
-                  {/* ✅ API KEY */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">API KEY</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      API KEY
+                    </label>
                     <div className="flex">
                       <div className="relative flex-1">
                         <input
                           type={showApiKey ? "text" : "password"}
                           value={apiKey}
                           onChange={(e) => setApiKey(e.target.value)}
-                          className="w-full border border-gray-200 rounded-l-xl px-4 py-3 pr-12 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all"
+                          className="w-full px-4 py-3 pr-12 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)]"
+                          style={{
+                            borderRadius:
+                              "var(--page-radius) 0 0 var(--page-radius)",
+                          }}
                         />
                         <button
                           onClick={() => setShowApiKey(!showApiKey)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                          title={showApiKey ? "Hide" : "Show"}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-soft)]"
                         >
-                          {showApiKey ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          {showApiKey ? (
+                            <EyeOff className="h-5 w-5" />
+                          ) : (
+                            <Eye className="h-5 w-5" />
+                          )}
                         </button>
                       </div>
                       <button
                         onClick={() => handleCopy(apiKey, "api-key")}
-                        className="px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all"
-                        title="Copy API Key"
+                        className="px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)]"
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "api-key" ? <Check className="h-5 w-5 text-green-600" /> : <KeyRound className="h-5 w-5 text-gray-600" />}
+                        {copied === "api-key" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <KeyRound className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      This API key is loaded from backend <span className="font-medium">without_hash</span>.
+                    <p className="text-xs mt-2 text-[var(--text-faint)]">
+                      This API key is loaded from backend{" "}
+                      <span className="font-medium">without_hash</span>.
                     </p>
                   </div>
                 </div>
@@ -784,77 +1472,112 @@ curl_close(<span class="text-orange-300">$ch</span>);
             </div>
           )}
 
-          {/* CAMPAIGN TAB (use app_url, username, without_hash) */}
           {mainTab === "campaign" && (
             <div className="grid lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <div
+                className="border border-[var(--line-soft)] bg-[var(--surface)] p-6 shadow-[var(--shadow-panel)]"
+                style={{ borderRadius: "var(--page-radius)" }}
+              >
                 <div className="flex items-center space-x-3 mb-6">
-                  <div className="h-10 w-10 bg-gradient-to-br from-green-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg shadow-green-200">
+                  <div className="h-10 w-10 bg-gradient-to-br from-green-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg">
                     <Send className="h-5 w-5 text-white" />
                   </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Email Campaign Sender</h2>
+                  <h2 className="text-xl font-semibold text-[var(--text-strong)]">
+                    Email Campaign Sender
+                  </h2>
                 </div>
 
                 <div className="space-y-5">
-                  <div className="bg-gradient-to-r from-orange-50 to-yellow-50 p-4 rounded-xl border border-orange-100">
-                    <p className="text-sm text-gray-700">
-                      Configure your email campaign sender settings below. These settings will be used for all outgoing campaign emails.
+                  <div
+                    className="p-4 rounded-xl border bg-[var(--brand-soft)] border-[var(--line-soft)]"
+                    style={{ borderRadius: "var(--page-radius)" }}
+                  >
+                    <p className="text-sm text-[var(--text-body)]">
+                      Configure your email campaign sender settings below. These settings
+                      will be used for all outgoing campaign emails.
                     </p>
                   </div>
 
-                  {/* ✅ App URL (label changed) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">App URL</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      App URL
+                    </label>
                     <div className="flex group">
                       <input
                         type="text"
                         value={campaignAppUrl}
                         onChange={(e) => setCampaignAppUrl(e.target.value)}
                         disabled={campaignDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
+                        className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                           campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "var(--page-radius) 0 0 var(--page-radius)",
+                        }}
                       />
                       <button
                         onClick={() => handleCopy(campaignAppUrl, "camp-url")}
                         disabled={campaignDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
+                        className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                          campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "camp-url" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {copied === "camp-url" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <Copy className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
 
-                  {/* ✅ Username from backend username */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      Username
+                    </label>
                     <div className="flex group">
                       <input
                         type="text"
                         value={campaignUsername}
                         onChange={(e) => setCampaignUsername(e.target.value)}
                         disabled={campaignDisabled}
-                        className={`flex-1 border border-gray-200 rounded-l-xl px-4 py-3 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
+                        className={`flex-1 px-4 py-3 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                           campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "var(--page-radius) 0 0 var(--page-radius)",
+                        }}
                       />
                       <button
                         onClick={() => handleCopy(campaignUsername, "camp-user")}
                         disabled={campaignDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
+                        className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                          campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "camp-user" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {copied === "camp-user" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <Copy className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
 
-                  {/* ✅ Password from backend without_hash */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text-body)]">
+                      Password
+                    </label>
                     <div className="flex">
                       <div className="relative flex-1">
                         <input
@@ -862,36 +1585,58 @@ curl_close(<span class="text-orange-300">$ch</span>);
                           value={campaignPassword}
                           onChange={(e) => setCampaignPassword(e.target.value)}
                           disabled={campaignDisabled}
-                          className={`w-full border border-gray-200 rounded-l-xl px-4 py-3 pr-12 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all ${
+                          className={`w-full px-4 py-3 pr-12 text-sm text-[var(--text-strong)] bg-[var(--surface-2)] border border-[var(--line-soft)] outline-none transition focus:border-[var(--line-strong)] focus:ring-2 focus:ring-[var(--ring)] ${
                             campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
                           }`}
+                          style={{
+                            borderRadius:
+                              "var(--page-radius) 0 0 var(--page-radius)",
+                          }}
                         />
                         <button
-                          onClick={() => setShowCampaignPassword(!showCampaignPassword)}
+                          onClick={() =>
+                            setShowCampaignPassword(!showCampaignPassword)
+                          }
                           disabled={campaignDisabled}
-                          className={`absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 ${
-                            campaignDisabled ? "opacity-50 cursor-not-allowed hover:text-gray-500" : ""
-                          }`}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-soft)]"
                         >
-                          {showCampaignPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          {showCampaignPassword ? (
+                            <EyeOff className="h-5 w-5" />
+                          ) : (
+                            <Eye className="h-5 w-5" />
+                          )}
                         </button>
                       </div>
                       <button
                         onClick={() => handleCopy(campaignPassword, "camp-pass")}
                         disabled={campaignDisabled}
-                        className={`px-4 bg-gray-100 border border-l-0 border-gray-200 rounded-r-xl hover:bg-gray-200 transition-all ${
-                          campaignDisabled ? "opacity-50 cursor-not-allowed hover:bg-gray-100" : ""
+                        className={`px-4 border border-l-0 border-[var(--line-soft)] bg-[var(--surface-2)] text-[var(--text-body)] transition hover:bg-[var(--surface-soft)] ${
+                          campaignDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
+                        style={{
+                          borderRadius:
+                            "0 var(--page-radius) var(--page-radius) 0",
+                        }}
                       >
-                        {copied === "camp-pass" ? <Check className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5 text-gray-600" />}
+                        {copied === "camp-pass" ? (
+                          <Check className="h-5 w-5 text-[var(--success)]" />
+                        ) : (
+                          <Copy className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right Column - Open Sending App (button opens app url) */}
-              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl shadow-xl p-6 text-white relative overflow-hidden">
+              <div
+                className="rounded-2xl shadow-xl p-6 text-white relative overflow-hidden"
+                style={{
+                  background: `linear-gradient(135deg, var(--brand), var(--brand-strong))`,
+                  boxShadow: "var(--shadow-panel)",
+                  borderRadius: "var(--page-radius)",
+                }}
+              >
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-32 translate-x-32" />
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full translate-y-24 -translate-x-24" />
 
@@ -905,7 +1650,8 @@ curl_close(<span class="text-orange-300">$ch</span>);
 
                   <div className="space-y-6">
                     <p className="text-white/90 text-lg leading-relaxed">
-                      Launch the sending application to start your email campaign immediately.
+                      Launch the sending application to start your email campaign
+                      immediately.
                     </p>
 
                     <button
@@ -914,24 +1660,32 @@ curl_close(<span class="text-orange-300">$ch</span>);
                         if (!campaignAppUrl) return;
                         window.open(campaignAppUrl, "_blank", "noopener,noreferrer");
                       }}
-                      className={`w-full px-6 py-4 bg-white text-orange-600 rounded-xl hover:bg-orange-50 transition-all flex items-center justify-center space-x-3 text-lg font-semibold shadow-xl active:scale-[0.98] ${
-                        campaignDisabled || !campaignAppUrl ? "opacity-70 cursor-not-allowed hover:bg-white" : ""
-                      }`}
+                      className="w-full px-6 py-4 rounded-xl transition-all flex items-center justify-center space-x-3 text-lg font-semibold shadow-xl active:scale-[0.98] bg-white text-[var(--brand)]"
+                      style={{ borderRadius: "var(--page-radius)" }}
                     >
                       <Send className="h-5 w-5" />
                       <span>Open Sending App</span>
                     </button>
 
                     <div className="grid grid-cols-3 gap-3 mt-6">
-                      <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm">
+                      <div
+                        className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm"
+                        style={{ borderRadius: "var(--page-radius)" }}
+                      >
                         <div className="text-2xl font-bold">12</div>
                         <div className="text-xs text-white/70">Active</div>
                       </div>
-                      <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm">
+                      <div
+                        className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm"
+                        style={{ borderRadius: "var(--page-radius)" }}
+                      >
                         <div className="text-2xl font-bold">5.2K</div>
                         <div className="text-xs text-white/70">Sent</div>
                       </div>
-                      <div className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm">
+                      <div
+                        className="bg-white/10 rounded-xl p-3 text-center backdrop-blur-sm"
+                        style={{ borderRadius: "var(--page-radius)" }}
+                      >
                         <div className="text-2xl font-bold">98%</div>
                         <div className="text-xs text-white/70">Success</div>
                       </div>
@@ -939,12 +1693,16 @@ curl_close(<span class="text-orange-300">$ch</span>);
 
                     <div className="border-t border-white/20 pt-4 mt-4">
                       <p className="text-xs text-white/60">
-                        The sending app allows you to manage campaigns, track deliveries, and analyze performance in real-time.
+                        The sending app allows you to manage campaigns, track deliveries,
+                        and analyze performance in real-time.
                       </p>
                       <p className="text-xs text-white/60 mt-2">
                         {campaignAppUrl ? (
                           <>
-                            App URL: <span className="text-white font-medium">{campaignAppUrl}</span>
+                            App URL:{" "}
+                            <span className="text-white font-medium">
+                              {campaignAppUrl}
+                            </span>
                           </>
                         ) : (
                           <>App URL not found from backend.</>
@@ -956,10 +1714,259 @@ curl_close(<span class="text-orange-300">$ch</span>);
               </div>
             </div>
           )}
-
-          {/* Done */}
         </div>
-      </main>
+      </div>
+    );
+  }
+
+  // STEP 2 loading
+  if (domainLoading) {
+    return (
+      <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+        <div className="mx-auto max-w-xl">
+          <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+            <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                  <Image
+                    src="/Logoicon.png"
+                    alt="SMTPMaster Logo"
+                    width={28}
+                    height={28}
+                    className="object-contain"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold text-white sm:text-xl">
+                    Domain Verification
+                  </h1>
+                  <p className="text-sm text-white/90">
+                    Checking your sending domain status
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50">
+                <Loader2 className="h-8 w-8 animate-spin text-[#ff7800]" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Checking domain status
+              </h2>
+              <p className="mt-2 text-sm text-gray-500">
+                Please wait while we verify your sending domain details.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // STEP 2 error
+  if (domainError) {
+    return (
+      <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+        <div className="mx-auto max-w-xl">
+          <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+            <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                  <Image
+                    src="/Logoicon.png"
+                    alt="SMTPMaster Logo"
+                    width={28}
+                    height={28}
+                    className="object-contain"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold text-white sm:text-xl">
+                    Domain Verification
+                  </h1>
+                  <p className="text-sm text-white/90">Something went wrong</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-14 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50">
+                <MailCheck className="h-8 w-8 text-red-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Unable to load domain info
+              </h2>
+              <p className="mt-2 text-sm text-gray-500">{domainError}</p>
+
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white transition hover:bg-[#e66c00]"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // STEP 2 fail: no valid domain
+  if (domainListEmpty || !hasValidDomain) {
+    return (
+      <InfoCard
+        step={2}
+        icon={<Globe className="h-8 w-8 text-[#ff7800]" />}
+        title="Step 2: No Active Domain Found"
+        subtitle="Please verify your domain to continue"
+      >
+        <div className="mb-4 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
+          <p className="text-sm font-medium text-gray-700">
+            Active Plan:
+            <span className="ml-1 font-bold text-[#ff7800]">{activePlanName}</span>
+            {activePlanEndDate ? (
+              <span className="ml-2 text-gray-500">
+                • Expires: {formatDate(activePlanEndDate)}
+              </span>
+            ) : null}
+          </p>
+        </div>
+
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          To access your SMTP credentials and sending application details, you'll
+          need to verify your domain. Please go to the Domain Info section and add
+          the following three TXT records to your DNS panel: SPF, DMARC, DKIM.
+        </p>
+
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          Once these records are properly added and verified, your domain will be
+          activated, and you'll be able to access your email sending credentials.
+        </p>
+
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          If you need any assistance with the setup or have any questions, feel free
+          to reach out to our{" "}
+          <a
+            href="mailto:support@smtpmaster.com"
+            className="font-semibold text-[#ff7800] hover:underline"
+          >
+            support team
+          </a>{" "}
+          — we're here to help.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => router.push("/domain-info")}
+          className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white transition hover:bg-[#e66c00]"
+        >
+          Domain Info
+        </button>
+      </InfoCard>
+    );
+  }
+
+  // STEP 3 ready - domain ok but email config not ready yet
+  if (hasValidDomain && !hasEmailConfig) {
+    return (
+      <InfoCard
+        step={3}
+        icon={<ShieldCheck className="h-8 w-8 text-green-600" />}
+        title="Step 3: Ready to send emails"
+        subtitle="Your domain is verified successfully"
+      >
+        <div className="mb-4 rounded-2xl border border-green-100 bg-green-50 px-4 py-3">
+          <p className="text-sm font-medium text-gray-700">
+            Verified Domain:
+            <span className="ml-1 font-bold text-green-600">{validDomainName}</span>
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            Active Plan: <span className="font-semibold">{activePlanName}</span>
+            {activePlanEndDate ? ` • Expires: ${formatDate(activePlanEndDate)}` : ""}
+          </p>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-900">Ready to send emails</h3>
+
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          Your domain has been successfully verified. Your email sending details
+          will be available shortly.
+        </p>
+
+        <p className="mt-3 text-sm leading-6 text-gray-500">
+          If you experience any delays or need further assistance, please don't
+          hesitate to contact our{" "}
+          <a
+            href="mailto:support@smtpmaster.com"
+            className="font-semibold text-[#ff7800] hover:underline"
+          >
+            support team
+          </a>{" "}
+          or raise a support ticket. We're here to help.
+        </p>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push("https://smtpmaster.tawk.help")}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#ff7800] bg-white px-6 text-sm font-semibold text-[#ff7800] transition hover:bg-orange-50"
+          >
+            Raise Support Ticket
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              window.location.href =
+                "mailto:support@smtpmaster.com?subject=Email%20Configuration%20Request"
+            }
+            className="inline-flex h-11 items-center justify-center rounded-xl bg-[#ff7800] px-6 text-sm font-semibold text-white transition hover:bg-[#e66c00]"
+          >
+            Contact Support
+          </button>
+        </div>
+      </InfoCard>
+    );
+  }
+
+  // final fallback
+  return (
+    <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+      <div className="mx-auto max-w-xl">
+        <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+          <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                <Image
+                  src="/Logoicon.png"
+                  alt="SMTPMaster Logo"
+                  width={28}
+                  height={28}
+                  className="object-contain"
+                />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-white sm:text-xl">
+                  Loading
+                </h1>
+                <p className="text-sm text-white/90">Please wait...</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50">
+              <Loader2 className="h-8 w-8 animate-spin text-[#ff7800]" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Loading</h2>
+            <p className="mt-2 text-sm text-gray-500">
+              Please wait while we load your information.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

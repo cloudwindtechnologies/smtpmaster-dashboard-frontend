@@ -163,10 +163,14 @@ function firstValidationMsg(err: any): string {
   return "";
 }
 
+function roundMoney(n: number): number {
+  return Math.round(Number(n) || 0);
+}
+
 function money(n: number) {
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  return roundMoney(n).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
 }
 
@@ -689,12 +693,21 @@ export default function PackageDetailsPage() {
     return usd;
   };
 
-  const planPrice = toDisplay(baseUsd);
-  const subTotalAfterCoupon = toDisplay(payableUsd);
-  const discountAmount = Math.max(0, planPrice - subTotalAfterCoupon);
-  const paymentFee = !isIndia && paymentMethod === "crypto" ? subTotalAfterCoupon * CRYPTO_EXTRA_RATE : 0;
-  const tax = isIndia ? (subTotalAfterCoupon + paymentFee) * 0.18 : 0;
-  const total = subTotalAfterCoupon + paymentFee + tax;
+const planPrice = roundMoney(toDisplay(baseUsd));
+const subTotalAfterCoupon = roundMoney(toDisplay(payableUsd));
+const discountAmount = roundMoney(Math.max(0, planPrice - subTotalAfterCoupon));
+const paymentFee = roundMoney(
+  !isIndia && paymentMethod === "crypto"
+    ? subTotalAfterCoupon * CRYPTO_EXTRA_RATE
+    : 0
+);
+const tax = 
+  isIndia ? (subTotalAfterCoupon + paymentFee) * 0.18 : 0;
+
+const decimal = Number((tax % 1).toFixed(2));
+const ispluse = decimal >= 0.5;
+
+const total = roundMoney(subTotalAfterCoupon + paymentFee + tax);
 
   const featureList = splitList(pkg?.features);
   const hideBuy = toBool(pkg?.hide_buy_btn);
@@ -719,7 +732,7 @@ export default function PackageDetailsPage() {
         return;
       }
 
-      const res = await fetch("/api/all-packages/payment/applyCouponCode", {
+      const res = await fetch("/api/all-packages/applyCouponCode", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -730,10 +743,7 @@ export default function PackageDetailsPage() {
       });
 
       const json = (await res.json().catch(() => ({}))) as ApplyCouponResponse;
-      if (!res.ok) {
-        const msg = json?.message || firstValidationMsg(json) || "Coupon code is not valid or expired";
-        throw new Error(msg);
-      }
+      
       if (json?.code !== 200 || !json?.data) throw new Error(json?.message || "Coupon code is not valid or expired");
 
       setDiscountData(json.data);
@@ -954,9 +964,9 @@ export default function PackageDetailsPage() {
     const payload: Record<string, any> = {
       razorpay_payment_id: razorpayPaymentId,
       plan_id: pkg.id,
-      discountAmount: Number(discountAmount.toFixed(2)),
-      tax: Number(tax.toFixed(2)),
-      
+      discount: roundMoney(discountAmount),
+      tax: tax,
+      amount: roundMoney(total),
     };
 
     if (couponCode.trim()) {
@@ -1028,13 +1038,15 @@ export default function PackageDetailsPage() {
 
           const subscribeRes = await callSubscribeApi(razorpayPaymentId);
 
+         const invoiceId = subscribeRes?.data?.invoice_id || "";
+
           showToast(
             "success",
             subscribeRes?.message || "Payment successful and subscription activated."
           );
 
           setTimeout(() => {
-            router.push("/payment_success");
+            router.push(`/payment_success?invoice_id=${encodeURIComponent(invoiceId)}`);
           }, 1200);
         } catch (e: any) {
           showToast("error", e?.message || "Payment succeeded but subscription failed.");
@@ -1177,7 +1189,7 @@ export default function PackageDetailsPage() {
                 )}
               </Card>
 
-              <Card>
+              {/* <Card>
                 <button
                   type="button"
                   onClick={() => setCompanyOpen((v) => !v)}
@@ -1197,7 +1209,7 @@ export default function PackageDetailsPage() {
                     <div>Kolkata</div>
                   </div>
                 )}
-              </Card>
+              </Card> */}
 
               <Card>
                 <div className="text-sm font-medium text-slate-700 mb-3">Billing Address</div>
@@ -1546,7 +1558,8 @@ export default function PackageDetailsPage() {
                         muted={paymentFee === 0}
                       />
                       <div className="my-2 border-t border-slate-100" />
-                      <Row label={isIndia ? "GST (18%)" : "Tax"} value={`${currencySymbol}${money(tax)}`} muted={!isIndia} />
+                      <Row label={isIndia ? "GST (18%)" : "Tax"} value={`${currencySymbol}${tax}`} muted={!isIndia} />
+                      <Row label="Round off" value={ispluse?`+${1-decimal}`:`-${decimal}`} muted={!isIndia} />
                       <Row label="Total" value={`${currencySymbol}${money(total)}`} strong />
                     </div>
 

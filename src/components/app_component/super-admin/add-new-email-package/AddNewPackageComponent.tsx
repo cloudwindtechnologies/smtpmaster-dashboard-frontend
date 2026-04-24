@@ -1,16 +1,25 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { Pencil, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Pencil,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  ChevronDown,
+  Loader2,
+  UserPlus2,
+} from "lucide-react";
 import { token } from "../../common/http";
 import { showToast } from "../../common/toastHelper";
 
-// if backend returns featured_image as filename only, set base url
 const IMAGE_BASE_URL = "http://localhost:8000/uploads/package";
 
 const getAuthHeaders = () => ({
   Accept: "application/json",
-  Authorization: `Bearer ${token()}`,
+  "Content-Type": "application/json",
+  authorization: `Bearer ${token()}`,
 });
 
 /* =======================
@@ -35,16 +44,24 @@ type PackageForm = {
   domain: boolean;
   googleAdwordTagId: string;
 
-  // edit-only fields (backend supports)
-  status: string; // "1" | "0"
-  hideBuyBtn: string; // "1" | "0"
+  status: string;
+  hideBuyBtn: string;
 
-  // backend optional keys to prevent undefined key errors
-  packageSubheading: string;
-  amenitiesHeading: string;
   allAmenities: string;
   allBlockAmenities: string;
   yearlyPrice: string;
+
+  isCustom: boolean;
+  dedicatedUserIds: string[];
+};
+
+type ClientOption = {
+  id: string | number;
+  email?: string | null;
+  mobile?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  name?: string | null;
 };
 
 const EMPTY_FORM: PackageForm = {
@@ -58,27 +75,85 @@ const EMPTY_FORM: PackageForm = {
   app: false,
   domain: false,
   googleAdwordTagId: "",
-
   status: "0",
   hideBuyBtn: "0",
-
-  packageSubheading: "",
-  amenitiesHeading: "",
   allAmenities: "",
   allBlockAmenities: "",
   yearlyPrice: "",
+  isCustom: false,
+  dedicatedUserIds: [],
 };
 
 function resolveImageUrl(img?: string) {
   if (!img) return "";
-  if (img.startsWith("http://") || img.startsWith("https://") || img.startsWith("blob:"))
+  if (
+    img.startsWith("http://") ||
+    img.startsWith("https://") ||
+    img.startsWith("blob:")
+  ) {
     return img;
+  }
   return `${IMAGE_BASE_URL}/${img}`;
+}
+
+function normalizeBool(value: unknown): boolean {
+  return value === true || value === 1 || value === "1";
+}
+
+function parseDedicatedUserIds(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function clientLabel(c: ClientOption) {
+  const fullName =
+    c.first_name || c.last_name
+      ? `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim()
+      : (c.name ?? "").trim();
+
+  const email = c.email ?? "";
+  const mobile = c.mobile ?? "";
+
+  const main = fullName || email || mobile || `Client #${c.id}`;
+  const tailParts = [];
+  if (email && main !== email) tailParts.push(email);
+  if (mobile) tailParts.push(mobile);
+
+  return tailParts.length ? `${main} (${tailParts.join(" / ")})` : main;
+}
+
+function ClientSkeletonItem() {
+  return (
+    <div className="border-b border-gray-100 px-4 py-3 last:border-b-0">
+      <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
+      <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-gray-100" />
+    </div>
+  );
+}
+
+function ClientDropdownSkeleton() {
+  return (
+    <div className="py-1">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <ClientSkeletonItem key={i} />
+      ))}
+    </div>
+  );
 }
 
 export default function AddNewPackagesPage() {
   const [previewUrl, setPreviewUrl] = useState("");
-  const [imageFile, setImageFile] = useState<File | null>(null); // only used in ADD mode UI
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [form, setForm] = useState<PackageForm>(EMPTY_FORM);
 
   const [rows, setRows] = useState<PackageRow[]>([]);
@@ -88,18 +163,103 @@ export default function AddNewPackagesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const isEditMode = editingId !== null;
 
-  // only 2 states for search & pagination
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-
   const ITEMS_PER_PAGE = 10;
 
   /* =======================
-     GET: List Packages
+     User dropdown
+  ======================= */
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [selectedClientsMap, setSelectedClientsMap] = useState<Record<string, ClientOption>>({});
+
+  const [clientOpen, setClientOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+  const [debouncedClientQ, setDebouncedClientQ] = useState("");
+  const [clientPage, setClientPage] = useState(1);
+  const [clientPerPage] = useState(10);
+  const [clientLastPage, setClientLastPage] = useState(1);
+
+  const clientDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  /* =======================
+     Derived
+  ======================= */
+  const selectedClients = useMemo(() => {
+    return form.dedicatedUserIds.map((id) => {
+      return (
+        selectedClientsMap[id] || {
+          id,
+          name: `User ${id}`,
+        }
+      );
+    }) as ClientOption[];
+  }, [form.dedicatedUserIds, selectedClientsMap]);
+
+  const filteredUnselectedClients = useMemo(() => {
+    return clients.filter((c) => !form.dedicatedUserIds.includes(String(c.id)));
+  }, [clients, form.dedicatedUserIds]);
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) => r.name.toLowerCase().includes(q) || r.status.toLowerCase().includes(q)
+    );
+  }, [rows, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedRows = filteredRows.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  /* =======================
+     Effects
+  ======================= */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedClientQ(clientSearch);
+      setClientPage(1);
+    }, 400);
+
+    return () => clearTimeout(t);
+  }, [clientSearch]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        clientDropdownRef.current &&
+        !clientDropdownRef.current.contains(event.target as Node)
+      ) {
+        setClientOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    fetchPackages();
+  }, []);
+
+  useEffect(() => {
+    if (form.isCustom) {
+      fetchClients();
+    }
+  }, [clientPage, debouncedClientQ, form.isCustom]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
+
+  /* =======================
+     API
   ======================= */
   const fetchPackages = async () => {
     setLoadingList(true);
-    
 
     try {
       const res = await fetch(`/api/email-pakage-config/get-all-pakages`, {
@@ -114,7 +274,7 @@ export default function AddNewPackagesPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        showToast('error',`${data?.message || "Failed to load packages"}`)
+        showToast("error", `${data?.message || "Failed to load packages"}`);
         return;
       }
 
@@ -129,21 +289,64 @@ export default function AddNewPackagesPage() {
 
       setRows(mapped);
       setCurrentPage(1);
-      showToast('success',`Data fetched successfully`)
     } catch (err: any) {
-      showToast('error',`${err?.message || "Network error"}`)
+      showToast("error", `${err?.message || "Network error"}`);
     } finally {
       setLoadingList(false);
     }
   };
 
-  useEffect(() => {
-    fetchPackages();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const fetchClients = async () => {
+    if (!form.isCustom) return;
+
+    setLoadingClients(true);
+    try {
+      const qs = new URLSearchParams();
+      if (debouncedClientQ.trim()) qs.set("q", debouncedClientQ.trim());
+      qs.set("page", String(clientPage));
+      qs.set("per_page", String(clientPerPage));
+
+      const res = await fetch(
+        `/api/email-account-setting/email-configuration/getUser?${qs.toString()}`,
+        {
+          method: "GET",
+          headers: getAuthHeaders(),
+          cache: "no-store",
+        }
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setClients([]);
+        setClientLastPage(1);
+        return;
+      }
+
+      const finalData = data?.data?.data?.data || [];
+      const meta = data?.data?.data || {};
+
+      const safeClients = Array.isArray(finalData) ? finalData : [];
+      setClients(safeClients);
+      setClientLastPage(Number(meta?.last_page ?? 1));
+
+      setSelectedClientsMap((prev) => {
+        const next = { ...prev };
+        safeClients.forEach((client: ClientOption) => {
+          next[String(client.id)] = client;
+        });
+        return next;
+      });
+    } catch {
+      setClients([]);
+      setClientLastPage(1);
+    } finally {
+      setLoadingClients(false);
+    }
+  };
 
   /* =======================
-     File preview (ADD only)
+     File preview
   ======================= */
   const handleFile = (file?: File | null) => {
     if (!file) {
@@ -156,10 +359,48 @@ export default function AddNewPackagesPage() {
   };
 
   /* =======================
-     GET: Single Package (Edit)
+     Select / Remove User
+  ======================= */
+  const addClient = (client: ClientOption) => {
+    const id = String(client.id);
+
+    setSelectedClientsMap((prev) => ({
+      ...prev,
+      [id]: client,
+    }));
+
+    setForm((prev) => ({
+      ...prev,
+      dedicatedUserIds: prev.dedicatedUserIds.includes(id)
+        ? prev.dedicatedUserIds
+        : [...prev.dedicatedUserIds, id],
+    }));
+
+    setClientSearch("");
+    setDebouncedClientQ("");
+    setClientPage(1);
+    setClientOpen(true);
+  };
+
+  const removeSelectedUser = (id: string | number) => {
+    const stringId = String(id);
+
+    setForm((prev) => ({
+      ...prev,
+      dedicatedUserIds: prev.dedicatedUserIds.filter((item) => item !== stringId),
+    }));
+
+    setSelectedClientsMap((prev) => {
+      const next = { ...prev };
+      delete next[stringId];
+      return next;
+    });
+  };
+
+  /* =======================
+     Edit package
   ======================= */
   const onEdit = async (id: number) => {
-    
     setSaving(true);
 
     try {
@@ -172,11 +413,14 @@ export default function AddNewPackagesPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        showToast('error',`${data?.message || "Failed to load package"}`)
+        showToast("error", `${data?.message || "Failed to load package"}`);
         return;
       }
 
       const p = data?.data ?? data?.package ?? data;
+      const parsedDedicatedUsers = parseDedicatedUserIds(
+        p.dedicated_user_ids ?? p.dedicated_user_ids_array ?? []
+      );
 
       setEditingId(id);
 
@@ -187,32 +431,41 @@ export default function AddNewPackagesPage() {
         emailLimit: String(p.mail_limit ?? ""),
         emailPerHour: String(p.mail_per_hour ?? ""),
         features: String(p.features ?? ""),
-        dedicatedIp: p.dedicated_ip || 0,
-        app: p.free_sending_app || 0,
-        domain:p.free_sending_domain || 0,
+        dedicatedIp: normalizeBool(p.dedicated_ip),
+        app: normalizeBool(p.free_sending_app),
+        domain: normalizeBool(p.free_sending_domain),
         googleAdwordTagId: String(p.g_ad_id ?? ""),
-
-        // edit-only fields
         status: String(p.status ?? "0"),
         hideBuyBtn: String(p.hide_buy_btn ?? "0"),
-
-        // optional keys
-        packageSubheading: String(p.package_subheading ?? ""),
-        amenitiesHeading: String(p.amenities_heading ?? ""),
         allAmenities: String(p.all_amenities ?? ""),
         allBlockAmenities: String(p.all_block_amenities ?? ""),
         yearlyPrice: String(p.yearly_price ?? ""),
+        isCustom: normalizeBool(p.is_custom),
+        dedicatedUserIds: normalizeBool(p.is_custom) ? parsedDedicatedUsers : [],
       });
 
+      if (normalizeBool(p.is_custom)) {
+        const initialMap: Record<string, ClientOption> = {};
+        parsedDedicatedUsers.forEach((userId) => {
+          initialMap[userId] = {
+            id: userId,
+            name: `User ${userId}`,
+          };
+        });
+        setSelectedClientsMap(initialMap);
+      } else {
+        setSelectedClientsMap({});
+      }
 
-      
-
-      // edit mode: image cannot be changed (as your screenshot)
       setImageFile(null);
+      setClientSearch("");
+      setDebouncedClientQ("");
+      setClientPage(1);
+      setClientOpen(false);
 
-      showToast('success',"Edit mode enabled");
+      showToast("success", "Edit mode enabled");
     } catch (err: any) {
-      showToast('error',`${err?.message || "Network error"}`)
+      showToast("error", `${err?.message || "Network error"}`);
     } finally {
       setSaving(false);
     }
@@ -226,10 +479,15 @@ export default function AddNewPackagesPage() {
     setPreviewUrl("");
     setImageFile(null);
     setEditingId(null);
+    setClientSearch("");
+    setDebouncedClientQ("");
+    setClientPage(1);
+    setClientOpen(false);
+    setSelectedClientsMap({});
   };
 
   /* =======================
-     POST / PUT (JSON payload)
+     Submit
   ======================= */
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -238,31 +496,26 @@ export default function AddNewPackagesPage() {
     setSaving(true);
 
     try {
-      // ✅ Always send keys backend expects (avoid undefined array key)
-      // ✅ Only include status/hide_buy_btn when EDIT mode (to match your UI difference)
       const payload: any = {
         package_name: form.packageName,
-        package_subheading: form.packageSubheading || "",
-        amenities_heading: form.amenitiesHeading || "",
         all_amenities: form.allAmenities || "",
         all_block_amenities: form.allBlockAmenities || "",
-
         package_valid_days: form.validDays === "" ? null : Number(form.validDays),
         mail_limit: form.emailLimit === "" ? null : Number(form.emailLimit),
         mail_per_hour: form.emailPerHour === "" ? null : Number(form.emailPerHour),
-
         features: form.features || "",
         dedicated_ip: form.dedicatedIp ? 1 : 0,
         free_sending_app: form.app ? 1 : 0,
         free_sending_domain: form.domain ? 1 : 0,
-
         price: form.packagePrice === "" ? null : Number(form.packagePrice),
         yearly_price: form.yearlyPrice === "" ? null : Number(form.yearlyPrice),
-
         g_ad_id: form.googleAdwordTagId || "",
+
+        // new columns
+        is_custom: form.isCustom ? 1 : 0,
+        dedicated_user_ids: form.isCustom ? form.dedicatedUserIds : [],
       };
 
-      // edit-only fields (like your screenshot)
       if (!isCreating) {
         payload.status = form.status === "" ? null : Number(form.status);
         payload.hide_buy_btn = form.hideBuyBtn === "" ? null : Number(form.hideBuyBtn);
@@ -288,45 +541,28 @@ export default function AddNewPackagesPage() {
           data?.message ||
           (data?.error ? JSON.stringify(data.error) : null) ||
           (isCreating ? "Create failed" : "Update failed");
-        showToast('error',`${msg}`)
+        showToast("error", `${msg}`);
         return;
       }
 
-      showToast('success',`${data?.message || (isCreating ? "Package created" : "Package updated")}`)
+      showToast(
+        "success",
+        `${data?.message || (isCreating ? "Package created" : "Package updated")}`
+      );
 
       resetForm();
       await fetchPackages();
     } catch (err: any) {
-      showToast('error',`${err?.message || "Network error"}`)
+      showToast("error", `${err?.message || "Network error"}`);
     } finally {
       setSaving(false);
     }
   };
 
-  /* =======================
-     Search + Pagination
-  ======================= */
-  const filteredRows = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.name.toLowerCase().includes(q) || r.status.toLowerCase().includes(q));
-  }, [rows, searchQuery]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE));
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedRows = filteredRows.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalPages]);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30">
-      
       <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-
           {/* LEFT */}
           <section className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="border-b border-gray-200 px-4 sm:px-6 py-3 bg-gradient-to-r from-orange-50 to-white flex items-center justify-between">
@@ -346,21 +582,23 @@ export default function AddNewPackagesPage() {
             </div>
 
             <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-4">
-              {/* only show in edit mode (like screenshot) */}
               {isEditMode ? (
                 <div className="rounded-md border-2 border-rose-200 bg-gradient-to-r from-orange-50 to-white px-3 py-2 text-xs font-semibold text-yellow-800">
                   You Can't Edit Package Image
                 </div>
               ) : null}
 
-              {/* image */}
+              {/* Image */}
               <div className="flex items-center justify-center">
                 <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-gray-50 p-6">
                   <div className="flex flex-col items-center gap-2">
                     <div className="relative h-20 w-20 overflow-hidden rounded-lg bg-white border border-gray-200 flex items-center justify-center">
                       {previewUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
+                        <img
+                          src={previewUrl}
+                          alt="Preview"
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <div className="text-center text-xs text-gray-400">
                           <div className="mx-auto mb-2 h-8 w-8 rounded bg-gray-200" />
@@ -465,21 +703,239 @@ export default function AddNewPackagesPage() {
               />
 
               <div className="flex flex-wrap items-center gap-6 pt-1">
-                <Switch label="Dedicated IP" checked={form.dedicatedIp} onChange={(v) => setForm({ ...form, dedicatedIp: v })} />
-                <Switch label="App" checked={form.app} onChange={(v) => setForm({ ...form, app: v })} />
-                <Switch label="Domain" checked={form.domain} onChange={(v) => setForm({ ...form, domain: v })} />
-                  
+                <Switch
+                  label="Dedicated IP"
+                  checked={form.dedicatedIp}
+                  onChange={(v) => setForm({ ...form, dedicatedIp: v })}
+                />
+                <Switch
+                  label="App"
+                  checked={form.app}
+                  onChange={(v) => setForm({ ...form, app: v })}
+                />
+                <Switch
+                  label="Domain"
+                  checked={form.domain}
+                  onChange={(v) => setForm({ ...form, domain: v })}
+                />
               </div>
+
+              {/* Custom Plan Toggle */}
+              <div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Create Custom Plan</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Turn this on to assign this package to selected users only.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextValue = !form.isCustom;
+                      setForm((prev) => ({
+                        ...prev,
+                        isCustom: nextValue,
+                        dedicatedUserIds: nextValue ? prev.dedicatedUserIds : [],
+                      }));
+
+                      if (!nextValue) {
+                        setSelectedClientsMap({});
+                        setClientSearch("");
+                        setDebouncedClientQ("");
+                        setClientPage(1);
+                        setClientOpen(false);
+                      }
+                    }}
+                    className={[
+                      "relative inline-flex h-6 w-12 items-center rounded-full transition",
+                      form.isCustom ? "bg-blue-600" : "bg-gray-300",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "inline-block h-5 w-5 transform rounded-full bg-white transition",
+                        form.isCustom ? "translate-x-6" : "translate-x-1",
+                      ].join(" ")}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom User Section */}
+              {form.isCustom ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800">Select User</h3>
+                    <p className="text-xs text-gray-600 mt-1">
+                      You can add or remove users. Selected IDs are stored in{" "}
+                      <b>dedicated_user_ids</b>.
+                    </p>
+                  </div>
+
+                  {/* Selected Users */}
+                  <div className="rounded-xl border border-blue-100 bg-white p-3">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-gray-800">
+                        Selected Users
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {form.dedicatedUserIds.length} selected
+                      </div>
+                    </div>
+
+                    {selectedClients.length > 0 ? (
+                      <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
+                        {selectedClients.map((client) => (
+                          <div
+                            key={String(client.id)}
+                            className="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700"
+                          >
+                            <span className="truncate max-w-[240px]">
+                              {clientLabel(client)} (ID: {client.id})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeSelectedUser(client.id)}
+                              className="shrink-0 rounded-full bg-white p-0.5 hover:bg-blue-100"
+                              title="Remove user"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-3 text-xs text-gray-500">
+                        No user selected yet.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add User Dropdown */}
+                  <div ref={clientDropdownRef} className="relative">
+                    <label className="mb-2 block text-sm font-semibold text-gray-800">
+                      Add User
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setClientOpen((prev) => !prev)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-left text-sm shadow-sm flex items-center justify-between hover:border-blue-400"
+                    >
+                      <span className="truncate text-gray-700">Select users</span>
+                      <ChevronDown
+                        className={`h-4 w-4 text-gray-500 transition ${
+                          clientOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {clientOpen ? (
+                      <div className="absolute z-50 mt-2 w-full rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+                        <div className="border-b border-gray-100 p-3">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <input
+                              type="text"
+                              value={clientSearch}
+                              onChange={(e) => setClientSearch(e.target.value)}
+                              placeholder="Search user..."
+                              className="w-full rounded-md border border-gray-300 pl-9 pr-3 py-2.5 text-sm outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="max-h-64 overflow-y-auto">
+                          {loadingClients ? (
+                            <ClientDropdownSkeleton />
+                          ) : filteredUnselectedClients.length === 0 ? (
+                            <div className="px-4 py-6 text-sm text-gray-500 text-center">
+                              No users found
+                            </div>
+                          ) : (
+                            filteredUnselectedClients.map((client) => (
+                              <button
+                                key={String(client.id)}
+                                type="button"
+                                onClick={() => addClient(client)}
+                                className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-blue-50 last:border-b-0"
+                              >
+                                <div className="text-sm font-medium text-gray-800">
+                                  {clientLabel(client)}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  ID: {client.id}
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-3 py-3 text-xs bg-gray-50">
+                          <button
+                            type="button"
+                            onClick={() => setClientPage((p) => Math.max(1, p - 1))}
+                            disabled={clientPage === 1 || loadingClients}
+                            className="inline-flex min-w-[90px] items-center justify-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                            Prev
+                          </button>
+
+                          <span className="text-gray-600 font-medium">
+                            Page {clientPage} of {clientLastPage}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setClientPage((p) => Math.min(clientLastPage, p + 1))
+                            }
+                            disabled={clientPage === clientLastPage || loadingClients}
+                            className="inline-flex min-w-[90px] items-center justify-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                          >
+                            Next
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <FieldLabel label="is_custom" />
+                      <input
+                        value={form.isCustom ? "1" : "0"}
+                        readOnly
+                        className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <FieldLabel label="dedicated_user_ids" />
+                      <input
+                        value={form.dedicatedUserIds.join(",")}
+                        readOnly
+                        className="w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <FieldLabel label="Google AdWord Tag ID" />
               <input
                 value={form.googleAdwordTagId}
-                onChange={(e) => setForm({ ...form, googleAdwordTagId: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, googleAdwordTagId: e.target.value })
+                }
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
                 placeholder="Enter google adword tag unique ID"
               />
 
-              {/* ✅ EDIT MODE ONLY fields (difference you want) */}
               {isEditMode ? (
                 <>
                   <FieldLabel label="Status" required />
@@ -512,7 +968,16 @@ export default function AddNewPackagesPage() {
                   saving ? "opacity-70 cursor-not-allowed" : "",
                 ].join(" ")}
               >
-                {saving ? "Saving..." : isEditMode ? "Update" : "Submit"}
+                {saving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </span>
+                ) : isEditMode ? (
+                  "Update"
+                ) : (
+                  "Submit"
+                )}
               </button>
             </form>
           </section>
@@ -522,8 +987,8 @@ export default function AddNewPackagesPage() {
             <div className="border-b border-gray-200 px-4 sm:px-6 py-4 bg-gradient-to-r from-orange-50 to-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm sm:text-base font-semibold ">All Packages</h2>
-                  <p className="text-xs  mt-1">Found {filteredRows.length} packages</p>
+                  <h2 className="text-sm sm:text-base font-semibold">All Packages</h2>
+                  <p className="text-xs mt-1">Found {filteredRows.length} packages</p>
                 </div>
 
                 <button
@@ -535,7 +1000,7 @@ export default function AddNewPackagesPage() {
               </div>
 
               <div className="mt-3 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 " />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" />
                 <input
                   value={searchQuery}
                   onChange={(e) => {
@@ -543,7 +1008,7 @@ export default function AddNewPackagesPage() {
                     setCurrentPage(1);
                   }}
                   placeholder="Search packages..."
-                  className="w-full rounded-md border border-black bg-white/15   pl-9 pr-3 py-2 text-sm outline-none focus:border-white/40"
+                  className="w-full rounded-md border border-black bg-white/15 pl-9 pr-3 py-2 text-sm outline-none focus:border-white/40"
                 />
               </div>
             </div>
@@ -553,10 +1018,18 @@ export default function AddNewPackagesPage() {
                 <thead className="bg-gray-50">
                   <tr className="border-b border-gray-200">
                     <th className="px-4 py-3 text-left font-semibold text-gray-700">#</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Package Name</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Image</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Action</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Package Name
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Image
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                      Action
+                    </th>
                   </tr>
                 </thead>
 
@@ -582,7 +1055,6 @@ export default function AddNewPackagesPage() {
                         <td className="px-4 py-3">
                           <div className="relative h-8 w-8 overflow-hidden rounded bg-gray-100 border border-gray-200">
                             {r.image ? (
-                              // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={resolveImageUrl(r.image)}
                                 alt={r.name}
@@ -600,7 +1072,9 @@ export default function AddNewPackagesPage() {
                           <span
                             className={[
                               "inline-flex items-center rounded px-2 py-1 text-xs font-semibold",
-                              r.status === "Show" ? "bg-green-600 text-white" : "bg-red-500 text-white",
+                              r.status === "Show"
+                                ? "bg-green-600 text-white"
+                                : "bg-red-500 text-white",
                             ].join(" ")}
                           >
                             {r.status}
@@ -626,7 +1100,9 @@ export default function AddNewPackagesPage() {
 
             {filteredRows.length > ITEMS_PER_PAGE ? (
               <div className="border-t border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between text-xs text-gray-600">
-                <div>Page {currentPage} of {totalPages}</div>
+                <div>
+                  Page {currentPage} of {totalPages}
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -652,9 +1128,6 @@ export default function AddNewPackagesPage() {
   );
 }
 
-/* =======================
-   Small helpers
-======================= */
 function FieldLabel({ label, required }: { label: string; required?: boolean }) {
   return (
     <label className="block text-sm font-semibold text-gray-800">

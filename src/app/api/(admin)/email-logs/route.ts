@@ -19,7 +19,8 @@ export async function POST(req: Request) {
       body,
       cache: "no-store",
     });
-
+    console.log(body);
+    
     const text = await res.text();
     return new NextResponse(text, {
       status: res.status,

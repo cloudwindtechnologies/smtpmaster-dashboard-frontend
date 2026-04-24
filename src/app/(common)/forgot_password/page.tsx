@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Mail, KeyRound, Lock, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import ReCAPTCHA from "react-google-recaptcha";
 
 export default function ForgotPasswordPage() {
+  const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
 
@@ -15,6 +18,14 @@ export default function ForgotPasswordPage() {
 
   const [msg, setMsg] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
+  const recaptchaRef = useRef<ReCAPTCHA | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "";
+
+  function resetRecaptcha() {
+    recaptchaRef.current?.reset();
+    setCaptchaToken(null);
+  }
 
   async function sendOTP() {
     setLoading(true);
@@ -27,6 +38,18 @@ export default function ForgotPasswordPage() {
       return;
     }
 
+    if (!recaptchaSiteKey) {
+      setMsg("reCAPTCHA is not configured.");
+      setLoading(false);
+      return;
+    }
+
+    if (!captchaToken) {
+      setMsg("Please complete reCAPTCHA.");
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`api/auth/forgot-password/forgotPasswordSendOtp`, {
         method: "POST",
@@ -35,21 +58,25 @@ export default function ForgotPasswordPage() {
         },
         body: JSON.stringify({
           email: email.trim(),
+          "g-recaptcha-response": captchaToken,
         }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
+        resetRecaptcha();
         setStep(2);
         setIsSuccess(true);
         setMsg(data.message || "OTP sent to your email.");
       } else {
+        resetRecaptcha();
         setIsSuccess(false);
         setMsg(data.message || "Failed to send OTP.");
       }
     } catch (error) {
       console.error("sendOTP error:", error);
+      resetRecaptcha();
       setIsSuccess(false);
       setMsg("Something went wrong while sending OTP.");
     } finally {
@@ -110,8 +137,10 @@ export default function ForgotPasswordPage() {
       return;
     }
 
-    if (password.length < 8) {
-      setMsg("Password must be at least 8 characters.");
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+    if (!passwordRegex.test(password)) {
+      setMsg("Enter a combination of at least 8 numbers, letters and punctuation marks (such as ! and &).");
       setLoading(false);
       return;
     }
@@ -141,6 +170,7 @@ export default function ForgotPasswordPage() {
       if (res.ok) {
         setIsSuccess(true);
         setMsg(data.message || "Password reset successfully. You can now login.");
+        router.replace("/login");
       } else {
         setIsSuccess(false);
         setMsg(data.message || "Reset failed.");
@@ -153,6 +183,7 @@ export default function ForgotPasswordPage() {
       setLoading(false);
     }
   }
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f4f6fb] px-4">
@@ -185,6 +216,16 @@ export default function ForgotPasswordPage() {
                 className="w-full border rounded-xl pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff7800]"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={recaptchaSiteKey}
+                onChange={(token) => setCaptchaToken(token)}
+                onExpired={() => setCaptchaToken(null)}
+                onErrored={() => setCaptchaToken(null)}
               />
             </div>
 
@@ -230,6 +271,7 @@ export default function ForgotPasswordPage() {
             <button
               type="button"
               onClick={() => {
+                resetRecaptcha();
                 setStep(1);
                 setMsg("");
                 setIsSuccess(false);
@@ -305,7 +347,11 @@ export default function ForgotPasswordPage() {
             {msg}
           </div>
         )}
-
+         <div className="mt-5">
+          <p className="text-right text-sm text-gray-500">
+            Instead <Link href={'/login'} className="font-semibold text-[#ff7800] hover:text-[#e66c00]">Login</Link>
+          </p>
+          </div>
         <div className="mt-6 text-center text-xs text-gray-400">
           © SMTPMaster. All rights reserved.
         </div>

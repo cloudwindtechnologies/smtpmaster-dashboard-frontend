@@ -1,12 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { auth } from "@/lib/firebase";
 import {
   ConfirmationResult,
   RecaptchaVerifier,
   signInWithPhoneNumber,
 } from "firebase/auth";
+import Image from "next/image";
+import { token as getToken } from "@/components/app_component/common/http";
+import {
+  getRouteFromWhereToGo,
+  persistAuthToken,
+  refreshOnboardingStage,
+} from "@/lib/onboarding";
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
@@ -14,13 +21,49 @@ function digitsOnly(value: string) {
 
 type CountryItem = {
   id?: number | string;
-  name?: string;
-  country_name?: string;
   code?: string;
-  iso_code?: string;
-  dial_code?: string;
-  phonecode?: string | number;
+  name?: string;
 };
+
+function sanitizeInternalRedirect(path: string | null): string | null {
+  if (!path) return null;
+
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  if (!trimmed.startsWith("/")) return null;
+  if (trimmed.startsWith("//")) return null;
+  if (trimmed.includes("://")) return null;
+  if (trimmed === "/login" || trimmed.startsWith("/login?")) return null;
+  if (trimmed === "/signup" || trimmed.startsWith("/signup")) return null;
+  if (trimmed === "/unauthorized" || trimmed.startsWith("/unauthorized")) return null;
+  if (trimmed.includes("\n") || trimmed.includes("\r")) return null;
+
+  return trimmed;
+}
+
+function setCookie(name: string, value: string, maxAge = 60 * 60 * 24 * 7) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
+}
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+
+  const row = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith(`${name}=`));
+
+  if (!row) return null;
+
+  try {
+    return decodeURIComponent(row.split("=").slice(1).join("="));
+  } catch {
+    return null;
+  }
+}
+
+function deleteCookie(name: string) {
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
 
 export default function PhoneVerifyPage() {
   const [countryCode, setCountryCode] = useState("+91");
@@ -33,6 +76,27 @@ export default function PhoneVerifyPage() {
     useState<ConfirmationResult | null>(null);
   const [message, setMessage] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredCountries = useMemo(() => {
+    const q = searchTerm.toLowerCase().trim();
+
+    return countries.filter((item) => {
+      const dialCode = getDialCode(item).toLowerCase();
+      const label = getCountryLabel(item).toLowerCase();
+      return dialCode.includes(q) || label.includes(q);
+    });
+  }, [countries, searchTerm]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const redirect = sanitizeInternalRedirect(params.get("redirect"));
+
+    if (redirect) {
+      setCookie("pending_redirect", redirect, 60 * 30);
+    }
+  }, []);
 
   const fullNumber = `${countryCode}${digitsOnly(mobile)}`;
 
@@ -47,8 +111,7 @@ export default function PhoneVerifyPage() {
         });
 
         const data = await response.json();
-       
-        
+
         const countryList = Array.isArray(data?.data)
           ? data.data
           : Array.isArray(data?.countries)
@@ -56,18 +119,15 @@ export default function PhoneVerifyPage() {
           : Array.isArray(data)
           ? data
           : [];
-           console.log(countryList);
+
+        
         setCountries(countryList);
 
         if (countryList.length > 0) {
-          const india =
-            countryList.find(
-              (item: CountryItem) =>
-                item.code === "IN" ||
-                item.iso_code === "IN" ||
-                item.name?.toLowerCase() === "india" ||
-                item.country_name?.toLowerCase() === "india"
-            ) || countryList[0];
+          const india =countryList.find(
+                      (item: CountryItem) =>
+                      item.name?.toLowerCase() === "india" || item.code === "+91"
+                      ) || countryList[0];
 
           const dialCode = getDialCode(india);
           if (dialCode) {
@@ -85,30 +145,15 @@ export default function PhoneVerifyPage() {
     fetchCountries();
   }, []);
 
-  function getDialCode(item: CountryItem) {
-    if (item.code) {
-      return String(item.code).startsWith("+")
-        ? String(item.code)
-        : `+${item.code}`;
-    }
+ function getDialCode(item: CountryItem) {
+  const raw = String(item.code || "").replace(/\s+/g, "").trim();
+  if (!raw) return "";
+  return raw.startsWith("+") ? raw : `+${raw}`;
+}
 
-    if (item.phonecode !== undefined && item.phonecode !== null) {
-      const phonecode = String(item.phonecode);
-      return phonecode.startsWith("+") ? phonecode : `+${phonecode}`;
-    }
-
-    return "";
-  }
-
-  function getCountryLabel(item: CountryItem) {
-    return (
-      item.country_name ||
-      item.name ||
-      item.code ||
-      item.iso_code ||
-      "Country"
-    );
-  }
+function getCountryLabel(item: CountryItem) {
+  return item.name || "Country";
+}
 
   const handleSendOTP = async () => {
     setMessage("");
@@ -121,26 +166,18 @@ export default function PhoneVerifyPage() {
     try {
       setLoading(true);
 
-      const recaptchaVerifier = new RecaptchaVerifier(
-        auth,
-        "recaptcha-container",
-        {
-          size: "invisible",
-        }
-      );
+      const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+        size: "invisible",
+      });
 
-      const result = await signInWithPhoneNumber(
-        auth,
-        fullNumber,
-        recaptchaVerifier
-      );
+      const result = await signInWithPhoneNumber(auth, fullNumber, verifier);
 
       setConfirmationResult(result);
       setStep("otp");
       setMessage("✅ OTP sent successfully");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Send OTP error:", error);
-      setMessage(`❌ ${error.message || "Failed to send OTP"}`);
+      setMessage(`❌ ${error instanceof Error ? error.message : "Failed to send OTP"}`);
     } finally {
       setLoading(false);
     }
@@ -154,8 +191,8 @@ export default function PhoneVerifyPage() {
       return;
     }
 
-    if (!otp) {
-      setMessage("Please enter OTP");
+    if (!otp || otp.length < 6) {
+      setMessage("Please enter a valid OTP");
       return;
     }
 
@@ -165,14 +202,18 @@ export default function PhoneVerifyPage() {
       const result = await confirmationResult.confirm(otp);
       const firebaseToken = await result.user.getIdToken();
 
-      const appAuthToken = localStorage.getItem("token");
+      const appAuthToken = getToken();
+
+      if (!appAuthToken) {
+        throw new Error("Session expired. Please login again.");
+      }
 
       const response = await fetch("/api/auth/register/verify-phone", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          Authorization: `Bearer ${appAuthToken || ""}`,
+          Authorization: `Bearer ${appAuthToken}`,
         },
         body: JSON.stringify({
           country_code: countryCode,
@@ -182,292 +223,316 @@ export default function PhoneVerifyPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.message || "Verification failed");
+        throw new Error(data?.message || "Verification failed");
       }
 
       setMessage("✅ Phone verified successfully!");
 
-      if (data.token) {
-        localStorage.setItem("token", data.token);
+      // Update token if backend returned new one
+      if (data?.token) {
+        persistAuthToken(data.token);
       }
 
+      // IMPORTANT: Call updateStage to get fresh JWT with "dashboard"
+      const wheretogo = await refreshOnboardingStage();
+
+      // Get the original URL user wanted to visit
+      const pendingRedirect = sanitizeInternalRedirect(getCookie("pending_redirect"));
+      deleteCookie("pending_redirect");
+      const nextRoute = getRouteFromWhereToGo(wheretogo);
+
+      // GO TO USER'S DESIRED PAGE OR DASHBOARD!
       setTimeout(() => {
-        window.location.href = "/login";
-      }, 2000);
-    } catch (error: any) {
+        if (pendingRedirect && nextRoute === "/") {
+          window.location.href = pendingRedirect;
+        } else {
+          window.location.href = nextRoute;
+        }
+      }, 1200);
+    } catch (error: unknown) {
       console.error("Verify error:", error);
-      setMessage(`❌ ${error.message || "Invalid OTP"}`);
+      setMessage(`❌ ${error instanceof Error ? error.message : "Invalid OTP"}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const useTestNumber = (code: string, number: string) => {
-    setCountryCode(code);
-    setMobile(number);
-    setMessage("✅ Test number selected");
+  const handleResetSession = async () => {
+    const appAuthToken = getToken();
+
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...(appAuthToken ? { authorization: `Bearer ${appAuthToken}` } : {}),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }).catch(() => {});
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user_token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("wheretogo");
+      localStorage.removeItem("userData");
+      localStorage.removeItem("filldata");
+      localStorage.removeItem("gmail");
+
+      sessionStorage.removeItem("tab_session");
+      sessionStorage.removeItem("auth_bootstrapping");
+      sessionStorage.removeItem("onboarding_filldata");
+      sessionStorage.removeItem("impersonate_token");
+
+      document.cookie = "token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+      document.cookie = "token=; Path=/; Max-Age=0; SameSite=Lax";
+      document.cookie = "role=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+      document.cookie = "role=; Path=/; Max-Age=0; SameSite=Lax";
+
+      window.location.replace("/login?error=session_expired");
+    }
   };
 
   return (
-    <div
-      style={{
-        maxWidth: 450,
-        margin: "40px auto",
-        padding: 30,
-        fontFamily: "Arial, sans-serif",
-        backgroundColor: "white",
-        borderRadius: 12,
-        boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-      }}
-    >
-      <div style={{ textAlign: "center", marginBottom: 30 }}>
-        <h1 style={{ fontSize: 24, color: "#333", marginBottom: 8 }}>
-          Phone Verification
-        </h1>
-        <p style={{ color: "#666", fontSize: 14 }}>
-          {step === "phone"
-            ? "Enter your phone number"
-            : "Enter verification code"}
-        </p>
-      </div>
+    <div className="min-h-screen bg-[#f4f6fb] p-3 sm:p-4 md:p-6">
+      <div className="mx-auto max-w-xl">
+        <div className="overflow-visible rounded-[24px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+          <div className="bg-[#ff7800] px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white">
+                <Image
+                  src="/Logoicon.png"
+                  alt="SMTPMaster Logo"
+                  width={28}
+                  height={28}
+                  className="object-contain"
+                />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold text-white sm:text-xl">
+                  Phone Verification
+                </h1>
+                <p className="text-sm text-white/90">
+                  Final Step: Verify your mobile number
+                </p>
+              </div>
+            </div>
+          </div>
 
-      {step === "phone" ? (
-        <>
-          <div style={{ marginBottom: 20 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 8,
-                fontWeight: "bold",
-                fontSize: 14,
-              }}
-            >
-              Phone Number
-            </label>
+          <div className="overflow-visible p-5 sm:p-6">
+            <div className="mb-6 text-center">
+              <h2 className="text-[24px] font-bold tracking-tight text-gray-900">
+                {step === "phone" ? "Verify your phone number" : "Enter OTP code"}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {step === "phone"
+                  ? "Secure your account with mobile verification"
+                  : "Enter the 6-digit code sent to your mobile number"}
+              </p>
+            </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
-              <select
-                value={countryCode}
-                onChange={(e) => setCountryCode(e.target.value)}
-                style={{
-                  width: "130px",
-                  padding: "12px",
-                  border: "1px solid #ddd",
-                  borderRadius: 6,
-                  fontSize: 16,
-                }}
-                disabled={loading || countryLoading}
-              >
-                {countries.length > 0 ? (
-                  countries.map((item, index) => {
-                    const dialCode = getDialCode(item);
-                    if (!dialCode) return null;
+            {step === "phone" ? (
+              <div className="space-y-5">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Mobile Number <span className="text-red-500">*</span>
+                  </label>
 
-                    return (
-                      <option key={item.id ?? index} value={dialCode}>
-                        {dialCode} ({getCountryLabel(item)})
-                      </option>
-                    );
-                  })
-                ) : (
-                  <option value="+91">+91 (India)</option>
+                  <div className="flex gap-3">
+                    <div className="relative w-[170px]">
+                      <button
+                        type="button"
+                        onClick={() => setIsDropdownOpen((prev) => !prev)}
+                        disabled={loading || countryLoading}
+                        className="flex h-11 w-full items-center rounded-xl border border-gray-200 bg-gray-50 px-3 pr-10 text-left text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-60"
+                      >
+                        <span className="truncate">
+                          {countryCode} (
+                          {getCountryLabel(
+                            countries.find((item) => getDialCode(item) === countryCode) || {}
+                          )}
+                          )
+                        </span>
+                      </button>
+
+                      <svg
+                        className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-transform ${
+                          isDropdownOpen ? "rotate-180" : ""
+                        }`}
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+
+                      {isDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full z-[9999] mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+                          <div className="border-b border-gray-200 bg-gray-50 p-3">
+                            <input
+                              type="text"
+                              placeholder="Search country or code..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus:border-[#ff7800] focus:ring-2 focus:ring-[#ff7800]/10"
+                              autoFocus
+                            />
+                          </div>
+
+                          <div className="max-h-64 overflow-y-auto">
+                            {filteredCountries.map((item, index) => {
+                              const dialCode = getDialCode(item);
+                              const label = getCountryLabel(item);
+
+                              if (!dialCode) return null;
+
+                              return (
+                                <button
+                                  key={item.id ?? index}
+                                  type="button"
+                                  onClick={() => {
+                                    setCountryCode(dialCode);
+                                    setIsDropdownOpen(false);
+                                    setSearchTerm("");
+                                  }}
+                                  className="flex w-full items-center justify-between border-b border-gray-100 px-4 py-2.5 text-left text-sm transition hover:bg-orange-50 last:border-b-0"
+                                >
+                                  <span className="font-medium text-gray-900">
+                                    {dialCode}
+                                  </span>
+                                  <span className="ml-3 truncate text-gray-600">
+                                    {label}
+                                  </span>
+                                </button>
+                              );
+                            })}
+
+                            {filteredCountries.length === 0 && (
+                              <div className="px-4 py-6 text-center text-sm text-gray-500">
+                                No countries found
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <input
+                      type="tel"
+                      placeholder="Enter mobile number"
+                      value={mobile}
+                      onChange={(e) => setMobile(e.target.value.replace(/\D/g, ""))}
+                      disabled={loading}
+                      maxLength={15}
+                      className="h-11 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 text-sm text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-60"
+                    />
+                  </div>
+
+                  <p className="mt-2 text-xs text-gray-500">
+                    Please enter an active mobile number to receive your verification code.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSendOTP}
+                  disabled={loading || countryLoading || !digitsOnly(mobile)}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? "Sending..." : "Send Verification Code"}
+                </button>
+
+                <div id="recaptcha-container" />
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-center">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Verification sent to
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                    {fullNumber}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    OTP Code <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter 6-digit OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    disabled={loading}
+                    maxLength={6}
+                    autoFocus
+                    className="h-12 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 text-center text-lg tracking-[0.35em] text-gray-900 outline-none transition focus:border-[#ff7800] focus:bg-white focus:ring-4 focus:ring-[#ff7800]/10 disabled:opacity-60"
+                  />
+                </div>
+
+                {!!message && (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                    {message}
+                  </div>
                 )}
-              </select>
 
-              <input
-                type="tel"
-                placeholder="Enter mobile number"
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value.replace(/\D/g, ""))}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  border: "1px solid #ddd",
-                  borderRadius: 6,
-                  fontSize: 16,
-                }}
-                disabled={loading}
-                maxLength={15}
-              />
-            </div>
-          </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep("phone");
+                      setOtp("");
+                      setMessage("");
+                    }}
+                    disabled={loading}
+                    className="inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Back
+                  </button>
 
-          <div style={{ marginBottom: 24 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 8,
-                fontWeight: "bold",
-                fontSize: 14,
-              }}
-            >
-              Quick Test Numbers
-            </label>
+                  <button
+                    type="button"
+                    onClick={handleVerifyOTP}
+                    disabled={loading || otp.length < 6}
+                    className="inline-flex h-11 flex-[1.4] items-center justify-center rounded-xl bg-[#ff7800] px-4 text-sm font-semibold text-white transition hover:bg-[#e66c00] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? "Verifying..." : "Verify & Continue"}
+                  </button>
+                </div>
+              </div>
+            )}
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {step === "phone" && !!message && (
+              <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                {message}
+              </div>
+            )}
+
+            <div className="mt-5 text-center text-sm text-gray-500">
+              Token expired?{" "}
               <button
-                onClick={() => useTestNumber("+1", "6505553434")}
                 type="button"
-                style={{
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  backgroundColor: "#e9ecef",
-                  border: "1px solid #dee2e6",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                }}
+                onClick={handleResetSession}
+                className="font-semibold text-[#ff7800] hover:underline"
               >
-                US: +1 6505553434
-              </button>
-
-              <button
-                onClick={() => useTestNumber("+44", "1234567890")}
-                type="button"
-                style={{
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  backgroundColor: "#e9ecef",
-                  border: "1px solid #dee2e6",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                }}
-              >
-                UK: +44 1234567890
-              </button>
-
-              <button
-                onClick={() => useTestNumber("+91", "9876543210")}
-                type="button"
-                style={{
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  backgroundColor: "#e9ecef",
-                  border: "1px solid #dee2e6",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                }}
-              >
-                India: +91 9876543210
+                login again
               </button>
             </div>
           </div>
-
-          <button
-            onClick={handleSendOTP}
-            disabled={loading || countryLoading || !digitsOnly(mobile)}
-            style={{
-              width: "100%",
-              padding: "14px",
-              backgroundColor: loading ? "#ccc" : "#007bff",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-              fontSize: 16,
-              cursor: loading ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            {loading ? "Sending..." : "Send Verification Code"}
-          </button>
-
-          <div id="recaptcha-container"></div>
-        </>
-      ) : (
-        <>
-          <div style={{ marginBottom: 24 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 8,
-                fontWeight: "bold",
-                fontSize: 14,
-              }}
-            >
-              Verification Code
-            </label>
-
-            <input
-              type="text"
-              placeholder="Enter 6-digit code"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-              style={{
-                width: "100%",
-                padding: "14px",
-                border: "1px solid #ddd",
-                borderRadius: 6,
-                fontSize: 18,
-                textAlign: "center",
-                letterSpacing: 4,
-              }}
-              disabled={loading}
-              maxLength={6}
-              autoFocus
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={() => {
-                setStep("phone");
-                setOtp("");
-                setMessage("");
-              }}
-              disabled={loading}
-              style={{
-                flex: 1,
-                padding: "12px",
-                backgroundColor: "#6c757d",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                fontSize: 14,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              Back
-            </button>
-
-            <button
-              onClick={handleVerifyOTP}
-              disabled={loading || !otp}
-              style={{
-                flex: 2,
-                padding: "12px",
-                backgroundColor: loading ? "#ccc" : "#28a745",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                fontSize: 14,
-                cursor: loading ? "not-allowed" : "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              {loading ? "Verifying..." : "Verify & Continue"}
-            </button>
-          </div>
-        </>
-      )}
-
-      {message && (
-        <div
-          style={{
-            marginTop: 20,
-            padding: 12,
-            backgroundColor: message.includes("✅") ? "#d4edda" : "#f8d7da",
-            color: message.includes("✅") ? "#155724" : "#721c24",
-            borderRadius: 6,
-            border: `1px solid ${
-              message.includes("✅") ? "#c3e6cb" : "#f5c6cb"
-            }`,
-          }}
-        >
-          {message}
         </div>
-      )}
+
+        <div className="mt-6 text-center text-sm text-gray-500">
+          © {new Date().getFullYear()} SMTPMaster. All rights reserved.
+        </div>
+      </div>
     </div>
   );
 }

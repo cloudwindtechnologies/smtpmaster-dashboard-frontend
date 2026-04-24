@@ -1,7 +1,7 @@
 import Header from '@/components/app_component/common/header'
 import SidebarNav from '@/components/app_component/common/sidebar'
 import OrderHistory from '@/components/app_component/user/order-history/order-history'
-import React from 'react'
+
 
 export default function Page() {
   return (

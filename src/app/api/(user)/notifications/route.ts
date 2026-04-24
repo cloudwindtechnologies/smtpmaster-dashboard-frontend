@@ -17,15 +17,18 @@ type SpamItem = {
   message?: string | null;
   spamreport?: string | null;
   created_at?: string | null;
+  is_unread?: number | string | null;
 };
 
 type NotificationItem = {
   id: string;
+  backend_id?: number;
   type: "invalid_domain" | "spam_report";
   title: string;
   message: string;
   date: string | null;
   href: string;
+  is_unread: Boolean;
 };
 
 async function safeJson(res: Response) {
@@ -81,16 +84,19 @@ export async function GET(req: Request) {
 
         return {
           id: `domain-${item.id}`,
+          backend_id: item.id,
           type: "invalid_domain",
           title: "Invalid domain setup found",
           message: `${item.domain_name} has invalid ${failedParts.join(", ")} record${failedParts.length > 1 ? "s" : ""}.`,
           date: item?.created_at || null,
           href: "/domain-info",
+          is_unread: false,
         };
       });
 
     const spamNotifications: NotificationItem[] = spamList.map((item) => ({
       id: `spam-${item.id}`,
+      backend_id: item.id,
       type: "spam_report",
       title: item?.title?.trim() || "Spam report detected",
       message:
@@ -100,6 +106,7 @@ export async function GET(req: Request) {
         "A spam report has been generated. Please review it.",
       date: item?.created_at || null,
       href: "/spam-report",
+      is_unread: String(item?.is_unread) === 'false' ,
     }));
 
     const notifications = [...invalidDomainNotifications, ...spamNotifications].sort(
