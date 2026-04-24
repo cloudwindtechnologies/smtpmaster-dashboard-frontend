@@ -486,10 +486,6 @@ const onLogin = async (e: React.FormEvent) => {
                           </button>
                         </div>
                       </div>
-
-                      <div className="flex items-center justify-end">
-                        <Link href="/forgot_password" className="text-[18px] font-medium text-[#ff7800] transition hover:text-[#e66c00]">Forgot your password?</Link>
-                      </div>
                       <div className="mt-4">
                         <ReCAPTCHA
                           ref={recaptchaRef}
@@ -497,6 +493,10 @@ const onLogin = async (e: React.FormEvent) => {
                           onChange={(token) => setCaptchaToken(token)}
                           onExpired={() => setCaptchaToken(null)}
                         />
+                      </div>
+
+                      <div className="flex items-center justify-end">
+                        <Link href="/forgot_password" className="text-[18px] font-medium text-[#ff7800] transition hover:text-[#e66c00]">Forgot your password?</Link>
                       </div>
 
                       <button
