@@ -4,6 +4,34 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const recaptchaToken = body["g-recaptcha-response"];
+
+    if (!recaptchaToken) {
+      return NextResponse.json(
+        { success: false, message: "Please complete reCAPTCHA" },
+        { status: 400 }
+      );
+    }
+
+    const verifyRes = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        secret: process.env.RECAPTCHA_SECRET_KEY || "",
+        response: recaptchaToken,
+      }).toString(),
+    });
+
+    const verifyData = await verifyRes.json();
+
+    if (!verifyData.success) {
+      return NextResponse.json(
+        { success: false, message: "reCAPTCHA verification failed" },
+        { status: 400 }
+      );
+    }
 
     const res = await fetch(`${apiURL}/api/v1/login`, {
       method: "POST",
@@ -36,9 +64,13 @@ export async function POST(req: Request) {
     }
 
     return response;
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { code: 500, error: "Server error", details: e?.message },
+      {
+        code: 500,
+        error: "Server error",
+        details: e instanceof Error ? e.message : "Unknown error",
+      },
       { status: 500 }
     );
   }

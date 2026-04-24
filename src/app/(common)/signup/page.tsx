@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { showToast } from "@/components/app_component/common/toastHelper";
 import { normalizeRole, setTabSession } from "@/lib/auth";
 import Image from "next/image";
+import ReCAPTCHA from "react-google-recaptcha";
 
 // Helper functions for pending redirect - MOVE THESE OUTSIDE THE COMPONENT
 function setPendingRedirect(path: string | null) {
@@ -43,6 +44,8 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const recaptchaRef = useRef<ReCAPTCHA | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -121,6 +124,12 @@ export default function SignupPage() {
       return;
     }
 
+    if (!captchaToken) {
+      setError("Please complete reCAPTCHA");
+      showToast("error", "Please complete reCAPTCHA");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -131,7 +140,7 @@ export default function SignupPage() {
           email: formData.email.toLowerCase(),
           password: formData.password,
           "type": "signup",
-          "g-recaptcha-response": "1",
+          "g-recaptcha-response": captchaToken,
         }),
       });
 
@@ -139,7 +148,9 @@ export default function SignupPage() {
       
       if (!res.ok || !data?.token) {
         setError(data.error?.email?.[0] || data.error || "Signup failed");
-        showToast('error', data.error || 'invalid user') 
+        showToast('error', data.error || 'invalid user');
+        recaptchaRef.current?.reset();
+        setCaptchaToken(null);
         return;
       }
 
@@ -179,6 +190,8 @@ export default function SignupPage() {
       console.error("Signup error:", err);
       setError("Something went wrong. Please try again.");
       showToast('error', "Something went wrong. Please try again.");
+      recaptchaRef.current?.reset();
+      setCaptchaToken(null);
     } finally {
       setLoading(false);
     }
@@ -365,6 +378,15 @@ export default function SignupPage() {
                             {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <ReCAPTCHA
+                          ref={recaptchaRef}
+                          sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ""}
+                          onChange={(token) => setCaptchaToken(token)}
+                          onExpired={() => setCaptchaToken(null)}
+                        />
                       </div>
 
                       <button
