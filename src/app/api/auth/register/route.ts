@@ -1,6 +1,46 @@
 import { apiURL } from "@/components/app_component/common/http";
 import { NextResponse } from "next/server";
 
+type RegisterBackendResponse = {
+  success?: boolean;
+  token?: string;
+  role?: string | number;
+  message?: unknown;
+  error?: unknown;
+  wheretogo?: string;
+  filldata?: unknown;
+};
+
+function getBackendMessage(data: RegisterBackendResponse): string {
+  if (typeof data.message === "string" && data.message.trim()) {
+    return data.message;
+  }
+
+  if (typeof data.error === "string" && data.error.trim()) {
+    return data.error;
+  }
+
+  if (data.error && typeof data.error === "object") {
+    for (const value of Object.values(data.error as Record<string, unknown>)) {
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+
+      if (Array.isArray(value)) {
+        const firstText = value.find(
+          (item): item is string => typeof item === "string" && item.trim().length > 0
+        );
+
+        if (firstText) {
+          return firstText;
+        }
+      }
+    }
+  }
+
+  return "Signup failed";
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -9,26 +49,6 @@ export async function POST(req: Request) {
     if (!recaptchaToken) {
       return NextResponse.json(
         { success: false, message: "Please complete reCAPTCHA" },
-        { status: 400 }
-      );
-    }
-
-    const verifyRes = await fetch("https://www.google.com/recaptcha/api/siteverify", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        secret: process.env.RECAPTCHA_SECRET_KEY || "",
-        response: recaptchaToken,
-      }).toString(),
-    });
-
-    const verifyData = await verifyRes.json();
-
-    if (!verifyData.success) {
-      return NextResponse.json(
-        { success: false, message: "reCAPTCHA verification failed" },
         { status: 400 }
       );
     }
@@ -42,10 +62,24 @@ export async function POST(req: Request) {
       body: JSON.stringify(body),
     });
 
-    const data = await res.json().catch(() => ({}));
+    const text = await res.text();
+
+    let data: RegisterBackendResponse;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.error("Backend returned non-JSON response:", text.slice(0, 200));
+      return NextResponse.json(
+        { success: false, message: "Backend returned invalid response" },
+        { status: 500 }
+      );
+    }
+
     const response = NextResponse.json(
       {
         ...data,
+        success: res.ok && Boolean(data?.token),
+        message: res.ok && data?.token ? data.message : getBackendMessage(data),
         role:
           data?.role === 1 || data?.role === "1" || data?.role === "superadmin"
             ? "superadmin"
