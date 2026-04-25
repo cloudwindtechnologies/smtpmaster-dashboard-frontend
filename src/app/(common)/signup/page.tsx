@@ -145,10 +145,12 @@ export default function SignupPage() {
       });
 
       const data = await res.json();
+      const errorMessage =
+        data?.message || data?.error?.email?.[0] || data?.error || "Signup failed";
       
       if (!res.ok || !data?.token) {
-        setError(data.error?.email?.[0] || data.error || "Signup failed");
-        showToast('error', data.error || 'invalid user');
+        setError(errorMessage);
+        showToast("error", errorMessage);
         recaptchaRef.current?.reset();
         setCaptchaToken(null);
         return;
